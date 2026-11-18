@@ -24,3 +24,13 @@ This is a practice project. All claims are mock data: records live in memory onl
 - **Given** I submit a claim with a claimant name, policy number, date of loss, and loss description, **when** the system receives it, **then** the system records the claim, assigns it a unique claim ID, and returns the recorded claim including that ID.
 - **Given** a claim is recorded, **when** it is accepted, **then** its initial status is `OPEN`.
 - **Given** this practice project stores mock data, **when** a claim is accepted, **then** it is stored in memory only, with no external database or real policyholder data involved.
+
+## Story 2: Validate required fields
+
+**As a** claims representative, **I want** the system to check that every claim has all required fields, **so that** incomplete claims do not enter processing.
+
+### Acceptance criteria
+
+- **Given** a claim submission that is missing any required field (claimant name, policy number, date of loss, or loss description), **when** the claim is submitted, **then** the system rejects it with a validation error that names each missing field.
+- **Given** a required field containing only whitespace or an empty string, **when** the claim is submitted, **then** the system treats that field as missing and rejects the claim.
+- **Given** a claim submission in which all required fields are present and non-blank, **when** the claim is submitted, **then** the system accepts it.

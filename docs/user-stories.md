@@ -34,3 +34,13 @@ This is a practice project. All claims are mock data: records live in memory onl
 - **Given** a claim submission that is missing any required field (claimant name, policy number, date of loss, or loss description), **when** the claim is submitted, **then** the system rejects it with a validation error that names each missing field.
 - **Given** a required field containing only whitespace or an empty string, **when** the claim is submitted, **then** the system treats that field as missing and rejects the claim.
 - **Given** a claim submission in which all required fields are present and non-blank, **when** the claim is submitted, **then** the system accepts it.
+
+## Story 3: Retrieve a claim
+
+**As a** claims representative, **I want** to look up a claim by its claim ID, **so that** I can review the details of a claim a policyholder filed.
+
+### Acceptance criteria
+
+- **Given** a claim recorded with a known claim ID, **when** I retrieve the claim by that ID, **then** the system returns the full claim record: claim ID, claimant name, policy number, date of loss, loss description, and status.
+- **Given** a claim ID that was never recorded, **when** I retrieve a claim by that ID, **then** the system returns a not-found error rather than an empty or partial claim.
+- **Given** more than one recorded claim, **when** I retrieve a claim by one ID, **then** the system returns exactly that claim and not another claim's details.

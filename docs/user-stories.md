@@ -12,7 +12,7 @@ This is a practice project. All claims are mock data: records live in memory onl
 
 - **Claim**: a record of a loss reported by a policyholder (the claimant) to the insurer.
 - **Claim ID**: a unique identifier the system assigns to each claim when it is accepted.
-- **Required fields**: claimant name, policy number, date of loss, and loss description.
+- **Required fields**: claimant name, claimant email, policy number, date of loss (which must not be in the future), claim type, loss description, and amount. The amount must be greater than zero. Claimant phone is optional, but when supplied it must be a valid phone format.
 - **Claim statuses**: `OPEN`, `IN_REVIEW`, `CLOSED`. A new claim starts at `OPEN`.
 
 ## Story 1: Accept a claim
@@ -21,7 +21,7 @@ This is a practice project. All claims are mock data: records live in memory onl
 
 ### Acceptance criteria
 
-- **Given** I submit a claim with a claimant name, policy number, date of loss, and loss description, **when** the system receives it, **then** the system records the claim, assigns it a unique claim ID, and returns the recorded claim including that ID.
+- **Given** I submit a claim with a claimant name, claimant email, policy number, date of loss that is not in the future, claim type, loss description, and an amount greater than zero, **when** the system receives it, **then** the system records the claim, assigns it a unique claim ID, and returns the recorded claim including that ID.
 - **Given** a claim is recorded, **when** it is accepted, **then** its initial status is `OPEN`.
 - **Given** this practice project stores mock data, **when** a claim is accepted, **then** it is stored in memory only, with no external database or real policyholder data involved.
 
@@ -31,9 +31,9 @@ This is a practice project. All claims are mock data: records live in memory onl
 
 ### Acceptance criteria
 
-- **Given** a claim submission that is missing any required field (claimant name, policy number, date of loss, or loss description), **when** the claim is submitted, **then** the system rejects it with a validation error that names each missing field.
+- **Given** a claim submission that is missing any required field (claimant name, claimant email, policy number, date of loss, claim type, loss description, or amount), **when** the claim is submitted, **then** the system rejects it with a validation error that names each missing field.
 - **Given** a required field containing only whitespace or an empty string, **when** the claim is submitted, **then** the system treats that field as missing and rejects the claim.
-- **Given** a claim submission in which all required fields are present and non-blank, **when** the claim is submitted, **then** the system accepts it.
+- **Given** a claim submission with a claimant name, a valid claimant email, a policy number, an incident date that is not in the future, a claim type, a loss description, and an amount greater than zero, **when** the claim is submitted, **then** the system accepts it; claimant phone is optional but must be valid when supplied.
 
 ## Story 3: Retrieve a claim
 

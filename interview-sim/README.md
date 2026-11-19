@@ -36,7 +36,7 @@ Detection runs in this order:
 3. Known IDE-bundled runtimes, including:
    - `C:\Program Files\Android\Android Studio\jbr`
    - JetBrains `jbr` directories under `Program Files\JetBrains`, `%LOCALAPPDATA%\JetBrains`, and the Toolbox apps directory
-   - Eclipse Adoptium and Java installations under `Program Files`, `Program Files (x86)`, and `%LOCALAPPDATA%\Programs`
+   - Eclipse Adoptium installations under `Program Files`, `Program Files (x86)`, and `%LOCALAPPDATA%\Programs`, and Java installations under `Program Files` and `%LOCALAPPDATA%\Programs`
 
 The detected version is printed in the top bar. If no JDK is found, the setup screen shows install instructions and refuses to start a session. The simulator never installs software.
 
@@ -71,14 +71,14 @@ node interview-sim/server.mjs
 
 The key is read from the environment by the server only. It is never written to disk, logs, the repository, or browser storage, and it is never sent to the browser. Each AI call is timeboxed to about 20 seconds. On any error, missing configuration, or timeout the server returns the scripted response.
 
-When AI is configured, the top bar shows `AI interviewer` and each answer, probe, and debrief is labelled `AI` or `Scripted fallback`. When AI is not configured, the top bar shows `Scripted interviewer` and no network call is made.
+When AI is configured, the top bar shows `AI interviewer` and each answer, probe, and debrief is labelled `AI` or `Scripted`. When AI is not configured, the top bar shows `Scripted interviewer` and no network call is made.
 
 Privacy note: when AI is enabled, the clarifying question, the current editor contents for a probe, and the session summary for the debrief are sent to the configured provider. Disable AI (unset the variables) if the code must not leave the machine.
 
 ## Session controls
 
 - Phase times default to 5 / 25 / 10 / 10 / 10 minutes and can be changed in the briefing dialog before starting.
-- The timer counts active phase time only. Pause and resume it, reset a phase, or advance by hand at any time.
+- The timer counts active phase time only. Pause and resume it, reset a phase, or advance by hand at any time. A phase that runs past its budget keeps counting overtime, which lowers the time-discipline score.
 - Checkpoint probes fire automatically at the scenario's configured minutes. `Ask for a probe` requests one adaptive follow-up when AI is available, and a scripted probe otherwise.
 - `Request hint` returns three graded hints: nudge, then direction, then near-answer. Every hint is recorded for scoring.
 - `Run tests` compiles and runs the hidden suite for the current phase. Test output is shown in the console.
@@ -137,7 +137,7 @@ A completed debrief appends a JSON record under `interview-sim/progress/`. That 
 
 ## Local-only and sandbox limitations
 
-- The server binds to `127.0.0.1`. There is no authentication, telemetry, or remote service other than the optional AI provider you configure.
+- The server binds to `127.0.0.1`. It rejects requests with a non-local `Host` header, rejects API requests whose `Origin` header is not the local server, and requires `Content-Type: application/json` on API POSTs. There is no authentication, telemetry, or remote service other than the optional AI provider you configure.
 - Your code is the user's own practice code. It is compiled and run locally in a temporary directory outside the repository, with a per-test timeout and a total timeout, and the directory is deleted afterward. On Windows, the whole process tree is killed on timeout.
 - **This is not a security sandbox.** Java code can read and write local files and use the network. Do not run code you do not trust. The timeouts limit hangs, not malicious behaviour.
 - Hidden tests are not sent to the browser, but test results and failure output are shown so you can debug.

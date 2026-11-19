@@ -1,0 +1,254 @@
+{
+  "id": "java-claim-index",
+  "title": "Build a claim index with maps",
+  "tagline": "Index claims by policy and status, keep replacement semantics correct, then add remove and merge.",
+  "difficulty": "Associate",
+  "topics": [
+    "Java",
+    "Collections",
+    "Maps",
+    "Data structures"
+  ],
+  "phaseTimes": {
+    "brief": 5,
+    "implement": 25,
+    "test": 10,
+    "change": 10,
+    "debrief": 10
+  },
+  "intro": "This round is core Java collections. The claim console needs instant lookups by policy and counts by status, so we are building an in-memory ClaimIndex around hash maps. Ask about the expected behaviour before you choose your data structures.",
+  "clarifyingQuestions": [
+    {
+      "id": "structure",
+      "topic": "Index structure",
+      "question": "Which maps and lists should the index use?",
+      "keywords": [
+        "map",
+        "hashmap",
+        "list",
+        "structure",
+        "index",
+        "collection"
+      ],
+      "answer": "Your choice, as long as the public methods meet the contract. A map from id to claim plus maps or lists for policy and status is the natural shape. Keep it in memory only.",
+      "coach": "Ask whether the internal data structures are constrained or yours to choose."
+    },
+    {
+      "id": "duplicates",
+      "topic": "Duplicate ids",
+      "question": "What happens when I add the same claim id twice?",
+      "keywords": [
+        "duplicate",
+        "same id",
+        "replace",
+        "again",
+        "overwrite"
+      ],
+      "answer": "The new claim replaces the old one completely. Size stays the same, and both the old status count and the old policy entry are updated so nothing stale is left behind.",
+      "coach": "Ask about duplicate and replacement semantics, because stale index entries are the classic bug."
+    },
+    {
+      "id": "normalization",
+      "topic": "Status normalization",
+      "question": "Is status matching case-sensitive?",
+      "keywords": [
+        "case",
+        "status",
+        "uppercase",
+        "trim",
+        "normalize",
+        "blank",
+        "null"
+      ],
+      "answer": "Trim and uppercase statuses for grouping. countByStatus trims and ignores case, and null or blank query values return 0. A null claim status is grouped as UNKNOWN. Policy numbers are trimmed but keep their case.",
+      "coach": "Ask how status values are normalized and how nulls are grouped."
+    },
+    {
+      "id": "ordering",
+      "topic": "Ordering rules",
+      "question": "How should claims and top policies be ordered?",
+      "keywords": [
+        "sort",
+        "order",
+        "top",
+        "tie",
+        "ascending",
+        "id"
+      ],
+      "answer": "claimsForPolicy returns a copy sorted by id ascending. topPolicies returns the policies with the most claims first, breaking ties by policy number ascending. A limit of zero or less returns an empty list.",
+      "coach": "Ask about ordering and tie-breakers for lists and top-N results."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "What follow-up change should I expect?",
+      "keywords": [
+        "change",
+        "follow-up",
+        "remove",
+        "merge",
+        "delete",
+        "next"
+      ],
+      "answer": "Expect remove by id and merge with another index. Both must keep the policy and status indexes consistent, including replacement by id.",
+      "coach": "Ask about the follow-up so you do not paint yourself into a corner with duplicated state."
+    }
+  ],
+  "clarifyingFallback": "Assume the index is in memory and single-threaded. When a rule is missing, choose the behaviour that keeps every index consistent and state the assumption.",
+  "problemStatement": "### Context\n\nThe claim console needs fast lookups. Implement ClaimIndex in the default package.\n\n### Your task\n\nImplement these methods:\n\n1. add(claim): index a claim. Ignore null claims and claims with a null id.\n2. size(): number of unique claim ids.\n3. countByStatus(status): number of claims in that status.\n4. claimsForPolicy(policyNumber): claims for a policy, sorted by id ascending.\n5. topPolicies(n): policy numbers ordered by claim count descending, ties by policy number ascending.\n\n### Rules\n\n- Adding an existing id replaces the old claim. No stale counts or policy entries may remain.\n- Statuses are trimmed and uppercased for grouping. A null or blank claim status groups under UNKNOWN.\n- countByStatus trims and ignores case. A null or blank query returns 0.\n- Policy numbers are trimmed but case-sensitive.\n- claimsForPolicy returns an immutable copy. Unknown or null policy returns an empty list.\n- topPolicies with n <= 0 returns an empty list. A limit larger than the number of policies returns all of them.\n- Null claims and null ids are ignored.\n\n### Visible examples\n\n- add C-1 OPEN policy AB-123456, then add C-1 CLOSED policy CD-999999: size is 1, OPEN count is 0, CLOSED count is 1.\n- Policies A and B both have 2 claims, C has 1: topPolicies(3) is A, B, C.\n- claimsForPolicy with ids C-2 then C-1: returns C-1 then C-2.",
+  "fileName": "ClaimIndex.java",
+  "starterCode": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.HashMap;\nimport java.util.List;\nimport java.util.Map;\n\npublic final class ClaimIndex {\n\n    public record Claim(String id, String policyNumber, String status, BigDecimal amount) {\n    }\n\n    private final Map<String, List<Claim>> byPolicy = new HashMap<>();\n    private final Map<String, Integer> byStatus = new HashMap<>();\n    private final Map<String, Claim> byId = new HashMap<>();\n\n    public void add(Claim claim) {\n        // TODO: ignore null claims and claims without an id. Replacing an existing id must\n        // remove the old entry from both indexes first.\n    }\n\n    public int size() {\n        // TODO\n        return 0;\n    }\n\n    public int countByStatus(String status) {\n        // TODO: null or blank status returns 0. Match case-insensitively after trimming.\n        return 0;\n    }\n\n    public List<Claim> claimsForPolicy(String policyNumber) {\n        // TODO: return claims sorted by id ascending, or an empty list when unknown.\n        return List.of();\n    }\n\n    public List<String> topPolicies(int n) {\n        // TODO: most claims first, ties by policy number ascending. n <= 0 returns empty.\n        return List.of();\n    }\n}\n",
+  "examples": [
+    {
+      "input": "add(C-1, OPEN, AB-123456)",
+      "output": "size() == 1"
+    },
+    {
+      "input": "add same id with CLOSED",
+      "output": "size() == 1; OPEN count 0; CLOSED count 1"
+    },
+    {
+      "input": "topPolicies(1)",
+      "output": "single policy with the most claims"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "adding claims increases size",
+      "className": "AddAndSizeTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class AddAndSizeTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        index.add(new ClaimIndex.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\")));\n        index.add(new ClaimIndex.Claim(\"C-2\", \"AB-123456\", \"CLOSED\", new BigDecimal(\"200\")));\n        index.add(new ClaimIndex.Claim(\"C-3\", \"CD-999999\", \"OPEN\", new BigDecimal(\"300\")));\n        TestSupport.eq(3, index.size(), \"size after three adds\");\n        System.out.println(\"PASS: adding claims increases size\");\n    }\n}\n"
+    },
+    {
+      "name": "adding an existing id replaces the old claim",
+      "className": "DuplicateIdTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class DuplicateIdTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        index.add(new ClaimIndex.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\")));\n        index.add(new ClaimIndex.Claim(\"C-1\", \"CD-999999\", \"CLOSED\", new BigDecimal(\"250\")));\n        TestSupport.eq(1, index.size(), \"duplicate id must not increase size\");\n        TestSupport.eq(0, index.countByStatus(\"OPEN\"), \"old status must be removed\");\n        TestSupport.eq(1, index.countByStatus(\"CLOSED\"), \"new status must be counted\");\n        TestSupport.eq(0, index.claimsForPolicy(\"AB-123456\").size(), \"old policy must be empty\");\n        TestSupport.eq(1, index.claimsForPolicy(\"CD-999999\").size(), \"new policy must contain the claim\");\n        System.out.println(\"PASS: adding an existing id replaces the old claim\");\n    }\n}\n"
+    },
+    {
+      "name": "status counts are case-insensitive and trimmed",
+      "className": "StatusCountTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class StatusCountTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        index.add(new ClaimIndex.Claim(\"C-1\", \"AB-123456\", \" open \", new BigDecimal(\"100\")));\n        index.add(new ClaimIndex.Claim(\"C-2\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\")));\n        index.add(new ClaimIndex.Claim(\"C-3\", \"AB-123456\", null, new BigDecimal(\"100\")));\n        TestSupport.eq(2, index.countByStatus(\" open\"), \"trimmed case-insensitive count\");\n        TestSupport.eq(1, index.countByStatus(\"unknown\"), \"null status groups under UNKNOWN\");\n        TestSupport.eq(0, index.countByStatus(null), \"null query status returns zero\");\n        TestSupport.eq(0, index.countByStatus(\"  \"), \"blank query status returns zero\");\n        System.out.println(\"PASS: status counts are case-insensitive and trimmed\");\n    }\n}\n"
+    },
+    {
+      "name": "claims for a policy are sorted by id",
+      "className": "PolicyClaimsSortedTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class PolicyClaimsSortedTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        index.add(new ClaimIndex.Claim(\"C-2\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\")));\n        index.add(new ClaimIndex.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\")));\n        index.add(new ClaimIndex.Claim(\"C-3\", \"CD-999999\", \"OPEN\", new BigDecimal(\"100\")));\n        var ids = index.claimsForPolicy(\"AB-123456\").stream().map(ClaimIndex.Claim::id).toList();\n        TestSupport.eq(List.of(\"C-1\", \"C-2\"), ids, \"policy claims sorted by id\");\n        System.out.println(\"PASS: claims for a policy are sorted by id\");\n    }\n}\n"
+    },
+    {
+      "name": "top policies sort by count then policy number",
+      "className": "TopPoliciesTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class TopPoliciesTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        index.add(new ClaimIndex.Claim(\"C-1\", \"B\", \"OPEN\", new BigDecimal(\"1\")));\n        index.add(new ClaimIndex.Claim(\"C-2\", \"B\", \"OPEN\", new BigDecimal(\"1\")));\n        index.add(new ClaimIndex.Claim(\"C-3\", \"A\", \"OPEN\", new BigDecimal(\"1\")));\n        index.add(new ClaimIndex.Claim(\"C-4\", \"A\", \"OPEN\", new BigDecimal(\"1\")));\n        index.add(new ClaimIndex.Claim(\"C-5\", \"C\", \"OPEN\", new BigDecimal(\"1\")));\n        TestSupport.eq(List.of(\"A\", \"B\", \"C\"), index.topPolicies(3), \"count then policy tie-break\");\n        TestSupport.eq(List.of(\"A\"), index.topPolicies(1), \"limit one\");\n        TestSupport.eq(List.of(), index.topPolicies(0), \"zero limit\");\n        TestSupport.eq(List.of(), index.topPolicies(-4), \"negative limit\");\n        System.out.println(\"PASS: top policies sort by count then policy number\");\n    }\n}\n"
+    },
+    {
+      "name": "null claims and null ids are ignored",
+      "className": "IgnoreNullsTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class IgnoreNullsTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        index.add(null);\n        index.add(new ClaimIndex.Claim(null, \"AB-123456\", \"OPEN\", new BigDecimal(\"1\")));\n        TestSupport.eq(0, index.size(), \"nothing indexed\");\n        TestSupport.eq(List.of(), index.claimsForPolicy(\"AB-123456\"), \"no policy entry\");\n        System.out.println(\"PASS: null claims and null ids are ignored\");\n    }\n}\n"
+    },
+    {
+      "name": "an empty index returns empty results",
+      "className": "EmptyIndexTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class EmptyIndexTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        TestSupport.eq(0, index.size(), \"size\");\n        TestSupport.eq(0, index.countByStatus(\"OPEN\"), \"status count\");\n        TestSupport.eq(List.of(), index.claimsForPolicy(\"AB-123456\"), \"policy claims\");\n        TestSupport.eq(List.of(), index.topPolicies(5), \"top policies\");\n        System.out.println(\"PASS: an empty index returns empty results\");\n    }\n}\n"
+    },
+    {
+      "name": "unknown and null policies return an empty list",
+      "className": "UnknownPolicyTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class UnknownPolicyTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        index.add(new ClaimIndex.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"1\")));\n        TestSupport.eq(List.of(), index.claimsForPolicy(\"NOPE-000000\"), \"unknown policy\");\n        TestSupport.eq(List.of(), index.claimsForPolicy(null), \"null policy\");\n        System.out.println(\"PASS: unknown and null policies return an empty list\");\n    }\n}\n"
+    }
+  ],
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 5,
+      "phase": "implement",
+      "text": "Which collection is the source of truth, and which are derived indexes? What happens if they disagree?"
+    },
+    {
+      "atMinute": 15,
+      "phase": "implement",
+      "text": "Talk me through the replacement path when the same id is added twice. Which entries must be cleaned up?"
+    }
+  ],
+  "fallbackProbe": "If the index had to support one million claims, which method would you change first and why?",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me the questions you would ask a real interviewer. When you are ready, tell me your plan and start the clock.",
+    "implement": "The implementation timer is running. Talk through your approach as you code, and tell me when you want to run the tests.",
+    "test": "Run the tests. Read the first failure carefully, say what you think caused it, then fix it.",
+    "change": "Here is the change request. Treat it as new scope from the interviewer, not as a rewrite of everything you have done.",
+    "debrief": "Time is up. Let us review what happened: the tests, the rubric, your questions, and the hints you used."
+  },
+  "hints": [
+    "Keep one map from id to claim as the source of truth. Derive size from it and update the other maps only through add.",
+    "On replacement, remove the old claim from the status count and from its policy list before inserting the new one. Delete empty policy entries.",
+    "For topPolicies, snapshot the policy keys, sort by list size descending then key ascending, and take a sublist. For the change, remove and merge can reuse the same cleanup path."
+  ],
+  "changeRequest": {
+    "prompt": "Support deletion and merging.",
+    "statement": "### Change request\n\nThe claim console now needs deletion and a combine operation.\n\nAdd:\n\n1. remove(claimId) returning boolean: true when a claim was removed.\n2. merge(other) combining another ClaimIndex into this one.\n\nRequirements:\n\n- remove(null) returns false. Removing an unknown id returns false and changes nothing.\n- Removing an existing claim updates size, status counts, and the policy list. Empty policy lists disappear.\n- merge(null) throws NullPointerException.\n- merge adds every claim from the other index. If ids collide, the incoming claim replaces the local one and the indexes stay consistent.\n- Merging an index into itself must not corrupt it.\n- The original methods must keep working.",
+    "starterCode": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.HashMap;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Objects;\n\npublic final class ClaimIndex {\n\n    public record Claim(String id, String policyNumber, String status, BigDecimal amount) {\n    }\n\n    private final Map<String, List<Claim>> byPolicy = new HashMap<>();\n    private final Map<String, Integer> byStatus = new HashMap<>();\n    private final Map<String, Claim> byId = new HashMap<>();\n\n    public void add(Claim claim) {\n        if (claim == null || claim.id() == null) {\n            return;\n        }\n        Claim previous = byId.put(claim.id(), claim);\n        if (previous != null) {\n            removeFromIndexes(previous);\n        }\n        byStatus.merge(normalizeStatus(claim.status()), 1, Integer::sum);\n        byPolicy.computeIfAbsent(normalizePolicy(claim.policyNumber()), key -> new ArrayList<>()).add(claim);\n    }\n\n    public int size() {\n        return byId.size();\n    }\n\n    public int countByStatus(String status) {\n        if (status == null || status.trim().isEmpty()) {\n            return 0;\n        }\n        return byStatus.getOrDefault(normalizeStatus(status), 0);\n    }\n\n    public List<Claim> claimsForPolicy(String policyNumber) {\n        if (policyNumber == null) {\n            return List.of();\n        }\n        List<Claim> claims = byPolicy.get(normalizePolicy(policyNumber));\n        if (claims == null) {\n            return List.of();\n        }\n        List<Claim> sorted = new ArrayList<>(claims);\n        sorted.sort((left, right) -> left.id().compareTo(right.id()));\n        return List.copyOf(sorted);\n    }\n\n    public List<String> topPolicies(int n) {\n        if (n <= 0) {\n            return List.of();\n        }\n        List<String> policies = new ArrayList<>(byPolicy.keySet());\n        policies.sort((left, right) -> {\n            int byCount = Integer.compare(byPolicy.get(right).size(), byPolicy.get(left).size());\n            if (byCount != 0) {\n                return byCount;\n            }\n            return left.compareTo(right);\n        });\n        return List.copyOf(policies.subList(0, Math.min(n, policies.size())));\n    }\n\n    private void removeFromIndexes(Claim claim) {\n        byStatus.computeIfPresent(normalizeStatus(claim.status()), (key, count) -> count <= 1 ? null : count - 1);\n        String policy = normalizePolicy(claim.policyNumber());\n        List<Claim> claims = byPolicy.get(policy);\n        if (claims != null) {\n            claims.removeIf(existing -> existing.id().equals(claim.id()));\n            if (claims.isEmpty()) {\n                byPolicy.remove(policy);\n            }\n        }\n    }\n\n    private static String normalizeStatus(String status) {\n        return status == null || status.trim().isEmpty() ? \"UNKNOWN\" : status.trim().toUpperCase();\n    }\n\n    private static String normalizePolicy(String policy) {\n        return policy == null || policy.trim().isEmpty() ? \"UNKNOWN\" : policy.trim();\n    }\n\n    public boolean remove(String claimId) {\n        // TODO: remove the claim by id, update both indexes, and return whether it existed.\n        return false;\n    }\n\n    public void merge(ClaimIndex other) {\n        Objects.requireNonNull(other, \"other\");\n        // TODO: add every claim from the other index, keeping ids deduplicated.\n    }\n}\n",
+    "fileName": "ClaimIndex.java",
+    "hiddenTests": [
+      {
+        "name": "removing an existing claim updates both indexes",
+        "className": "RemoveExistingTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class RemoveExistingTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        index.add(new ClaimIndex.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\")));\n        index.add(new ClaimIndex.Claim(\"C-2\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\")));\n        TestSupport.check(index.remove(\"C-1\"), \"remove must return true for an existing claim\");\n        TestSupport.eq(1, index.size(), \"size after remove\");\n        TestSupport.eq(1, index.countByStatus(\"OPEN\"), \"status count after remove\");\n        TestSupport.eq(List.of(\"C-2\"), index.claimsForPolicy(\"AB-123456\").stream().map(ClaimIndex.Claim::id).toList(),\n                \"policy claims after remove\");\n        System.out.println(\"PASS: removing an existing claim updates both indexes\");\n    }\n}\n"
+      },
+      {
+        "name": "removing a missing or null id returns false",
+        "className": "RemoveMissingTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class RemoveMissingTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        index.add(new ClaimIndex.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\")));\n        TestSupport.check(!index.remove(\"C-404\"), \"unknown id\");\n        TestSupport.check(!index.remove(null), \"null id\");\n        TestSupport.eq(1, index.size(), \"failed removes must not change size\");\n        System.out.println(\"PASS: removing a missing or null id returns false\");\n    }\n}\n"
+      },
+      {
+        "name": "merge combines two indexes",
+        "className": "MergeTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class MergeTest {\n    public static void main(String[] args) {\n        var left = new ClaimIndex();\n        left.add(new ClaimIndex.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\")));\n        var right = new ClaimIndex();\n        right.add(new ClaimIndex.Claim(\"C-2\", \"CD-999999\", \"CLOSED\", new BigDecimal(\"200\")));\n        right.add(new ClaimIndex.Claim(\"C-3\", \"CD-999999\", \"OPEN\", new BigDecimal(\"300\")));\n        left.merge(right);\n        TestSupport.eq(3, left.size(), \"merged size\");\n        TestSupport.eq(2, left.countByStatus(\"OPEN\"), \"merged OPEN count\");\n        TestSupport.eq(1, left.countByStatus(\"CLOSED\"), \"merged CLOSED count\");\n        TestSupport.eq(2, left.claimsForPolicy(\"CD-999999\").size(), \"merged policy claims\");\n        System.out.println(\"PASS: merge combines two indexes\");\n    }\n}\n"
+      },
+      {
+        "name": "merge replaces claims with the same id",
+        "className": "MergeReplacesDuplicateTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class MergeReplacesDuplicateTest {\n    public static void main(String[] args) {\n        var left = new ClaimIndex();\n        left.add(new ClaimIndex.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\")));\n        var right = new ClaimIndex();\n        right.add(new ClaimIndex.Claim(\"C-1\", \"CD-999999\", \"CLOSED\", new BigDecimal(\"250\")));\n        left.merge(right);\n        TestSupport.eq(1, left.size(), \"duplicate id must not grow the index\");\n        TestSupport.eq(0, left.countByStatus(\"OPEN\"), \"old status removed after merge\");\n        TestSupport.eq(1, left.countByStatus(\"CLOSED\"), \"new status present after merge\");\n        TestSupport.eq(0, left.claimsForPolicy(\"AB-123456\").size(), \"old policy empty after merge\");\n        TestSupport.eq(1, left.claimsForPolicy(\"CD-999999\").size(), \"new policy present after merge\");\n        System.out.println(\"PASS: merge replaces claims with the same id\");\n    }\n}\n"
+      },
+      {
+        "name": "merging null throws immediately",
+        "className": "MergeNullTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class MergeNullTest {\n    public static void main(String[] args) {\n        var index = new ClaimIndex();\n        TestSupport.throwsType(NullPointerException.class, () -> index.merge(null), \"null merge argument\");\n        System.out.println(\"PASS: merging null throws immediately\");\n    }\n}\n"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 30,
+      "criterion": "Index operations pass the hidden suite",
+      "strongAnswer": "Add, size, status counts, policy lists, and top policies all behave correctly, including replacement cleanup."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "Remove and merge pass the hidden suite",
+      "strongAnswer": "Deletion and merging keep every index consistent, including duplicate-id replacement and null input."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Clarified index invariants before coding",
+      "strongAnswer": "Asked about duplicate ids, normalization, ordering, and the planned removal and merge change."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Worked independently",
+      "strongAnswer": "Chose the index shape and handled replacement without leaning on hints."
+    },
+    {
+      "id": "efficiency",
+      "type": "efficiency",
+      "weight": 10,
+      "criterion": "Worked within the phase budget",
+      "strongAnswer": "Kept the implementation small enough to finish the base and the change request in time."
+    }
+  ],
+  "referenceSolution": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.HashMap;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Objects;\n\npublic final class ClaimIndex {\n\n    public record Claim(String id, String policyNumber, String status, BigDecimal amount) {\n    }\n\n    private final Map<String, List<Claim>> byPolicy = new HashMap<>();\n    private final Map<String, Integer> byStatus = new HashMap<>();\n    private final Map<String, Claim> byId = new HashMap<>();\n\n    public void add(Claim claim) {\n        if (claim == null || claim.id() == null) {\n            return;\n        }\n        Claim previous = byId.put(claim.id(), claim);\n        if (previous != null) {\n            removeFromIndexes(previous);\n        }\n        byStatus.merge(normalizeStatus(claim.status()), 1, Integer::sum);\n        byPolicy.computeIfAbsent(normalizePolicy(claim.policyNumber()), key -> new ArrayList<>()).add(claim);\n    }\n\n    public int size() {\n        return byId.size();\n    }\n\n    public int countByStatus(String status) {\n        if (status == null || status.trim().isEmpty()) {\n            return 0;\n        }\n        return byStatus.getOrDefault(normalizeStatus(status), 0);\n    }\n\n    public List<Claim> claimsForPolicy(String policyNumber) {\n        if (policyNumber == null) {\n            return List.of();\n        }\n        List<Claim> claims = byPolicy.get(normalizePolicy(policyNumber));\n        if (claims == null) {\n            return List.of();\n        }\n        List<Claim> sorted = new ArrayList<>(claims);\n        sorted.sort((left, right) -> left.id().compareTo(right.id()));\n        return List.copyOf(sorted);\n    }\n\n    public List<String> topPolicies(int n) {\n        if (n <= 0) {\n            return List.of();\n        }\n        List<String> policies = new ArrayList<>(byPolicy.keySet());\n        policies.sort((left, right) -> {\n            int byCount = Integer.compare(byPolicy.get(right).size(), byPolicy.get(left).size());\n            if (byCount != 0) {\n                return byCount;\n            }\n            return left.compareTo(right);\n        });\n        return List.copyOf(policies.subList(0, Math.min(n, policies.size())));\n    }\n\n    private void removeFromIndexes(Claim claim) {\n        byStatus.computeIfPresent(normalizeStatus(claim.status()), (key, count) -> count <= 1 ? null : count - 1);\n        String policy = normalizePolicy(claim.policyNumber());\n        List<Claim> claims = byPolicy.get(policy);\n        if (claims != null) {\n            claims.removeIf(existing -> existing.id().equals(claim.id()));\n            if (claims.isEmpty()) {\n                byPolicy.remove(policy);\n            }\n        }\n    }\n\n    private static String normalizeStatus(String status) {\n        return status == null || status.trim().isEmpty() ? \"UNKNOWN\" : status.trim().toUpperCase();\n    }\n\n    private static String normalizePolicy(String policy) {\n        return policy == null || policy.trim().isEmpty() ? \"UNKNOWN\" : policy.trim();\n    }\n\n    public boolean remove(String claimId) {\n        if (claimId == null) {\n            return false;\n        }\n        Claim removed = byId.remove(claimId);\n        if (removed == null) {\n            return false;\n        }\n        removeFromIndexes(removed);\n        return true;\n    }\n\n    public void merge(ClaimIndex other) {\n        Objects.requireNonNull(other, \"other\");\n        for (Claim claim : new ArrayList<>(other.byId.values())) {\n            add(claim);\n        }\n    }\n}\n"
+}

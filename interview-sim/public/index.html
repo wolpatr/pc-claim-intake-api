@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Interview Simulator - Claim Intake</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">IS</span>
+      <div>
+        <h1>Interview Simulator</h1>
+        <p>Java live coding, claim intake domain</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="jdkChip" class="chip">JDK checking</span>
+      <span id="aiChip" class="chip">Interviewer checking</span>
+      <button id="historyBtn" type="button" class="ghost">History</button>
+      <button id="exitBtn" type="button" class="ghost hidden">Exit session</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="setupScreen" class="screen">
+      <div class="hero">
+        <div>
+          <p class="eyebrow">Timed practice, not a quiz</p>
+          <h2>Walk into the room already warmed up.</h2>
+          <p class="lede">
+            A scripted interviewer presents a claim-domain or core Java problem, answers your clarifying questions,
+            runs your code against hidden tests, interrupts with probes, adds a change request, then scores the session.
+            The AI layer is optional; everything works offline.
+          </p>
+        </div>
+        <div class="hero-panel">
+          <div class="stat"><span>Phases</span><strong>5</strong></div>
+          <div class="stat"><span>Default clock</span><strong>60 min</strong></div>
+          <div class="stat"><span>Scenarios</span><strong id="scenarioCount">6</strong></div>
+          <div class="stat"><span>Runtime</span><strong>Local JDK</strong></div>
+        </div>
+      </div>
+
+      <div id="jdkWarning" class="warning hidden">
+        <h3>Java is required before a session can start</h3>
+        <ul id="installSteps"></ul>
+      </div>
+
+      <div class="section-head">
+        <h3>Choose a round</h3>
+        <p id="aiModeNote"></p>
+      </div>
+      <div id="scenarioGrid" class="scenario-grid" aria-live="polite"></div>
+    </section>
+
+    <section id="sessionScreen" class="screen hidden">
+      <div class="session-grid">
+        <aside class="panel interviewer-panel">
+          <div class="timer-card">
+            <div class="timer-top">
+              <div>
+                <p class="eyebrow">Phase</p>
+                <h3 id="phaseLabel">Brief &amp; Clarify</h3>
+              </div>
+              <div class="timer-value" id="timerValue">05:00</div>
+            </div>
+            <div class="timer-track"><div id="timerBar" class="timer-fill"></div></div>
+            <div class="phase-steps" id="phaseSteps"></div>
+            <div class="timer-controls">
+              <button id="pauseBtn" type="button" class="primary">Pause</button>
+              <button id="resetPhaseBtn" type="button" class="ghost">Reset phase</button>
+              <button id="nextPhaseBtn" type="button" class="ghost">Next phase</button>
+            </div>
+          </div>
+
+          <div class="problem-card">
+            <div class="problem-head">
+              <div>
+                <p class="eyebrow" id="scenarioDifficulty">Associate</p>
+                <h3 id="scenarioTitle">Scenario</h3>
+              </div>
+              <span id="topicChips" class="topic-chips"></span>
+            </div>
+            <div id="problemStatement" class="markdown"></div>
+          </div>
+
+          <div class="chat-card">
+            <div class="chat-head">
+              <h3>Interviewer</h3>
+              <span id="clarifyCounter" class="muted"></span>
+            </div>
+            <div id="chatLog" class="chat-log" aria-live="polite"></div>
+            <form id="clarifyForm" class="clarify-form">
+              <label class="sr-only" for="clarifyInput">Ask a clarifying question</label>
+              <input id="clarifyInput" type="text" autocomplete="off" placeholder="Ask a clarifying question..." maxlength="500">
+              <button type="submit" class="primary">Ask</button>
+            </form>
+            <div class="interview-actions">
+              <button id="hintBtn" type="button" class="ghost">Request hint</button>
+              <button id="probeBtn" type="button" class="ghost">Ask for a probe</button>
+            </div>
+          </div>
+        </aside>
+
+        <section class="panel workspace">
+          <div class="editor-toolbar">
+            <div class="file-label">
+              <span class="dot" aria-hidden="true"></span>
+              <code id="fileNameLabel">Claim.java</code>
+            </div>
+            <div class="editor-actions">
+              <button id="loadChangeBtn" type="button" class="ghost hidden">Load change starter</button>
+              <button id="restoreCodeBtn" type="button" class="ghost hidden">Restore my code</button>
+              <button id="resetCodeBtn" type="button" class="ghost">Reset starter</button>
+              <button id="runBtn" type="button" class="primary">Run tests</button>
+            </div>
+          </div>
+          <div id="changeCard" class="change-card hidden">
+            <div class="change-head">
+              <span class="tag">Change request</span>
+              <h3 id="changeTitle"></h3>
+            </div>
+            <div id="changeStatement" class="markdown"></div>
+            <p class="muted">You can extend the code already in the editor, or load the change-request starter. Your implementation is saved if you switch.</p>
+          </div>
+          <textarea id="editor" class="editor" spellcheck="false" aria-label="Java code editor"></textarea>
+          <div class="console-card">
+            <div class="console-head">
+              <h3>Test console</h3>
+              <span id="consoleStatus" class="muted">Not run yet</span>
+            </div>
+            <div id="consoleOutput" class="console-output">
+              <p class="muted">Run the tests to see compile output and per-test results.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="briefingDialog" class="modal">
+    <form method="dialog" class="modal-inner">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow" id="briefDifficulty"></p>
+          <h2 id="briefTitle"></h2>
+          <p id="briefTagline" class="muted"></p>
+        </div>
+        <button type="submit" class="icon-button" aria-label="Close briefing">Close</button>
+      </div>
+      <div class="briefing-grid">
+        <div>
+          <h3>Interviewer opening</h3>
+          <p id="briefIntro" class="quote"></p>
+          <h3>Problem</h3>
+          <div id="briefProblem" class="markdown compact"></div>
+        </div>
+        <div class="briefing-side">
+          <h3>Phase times (minutes)</h3>
+          <div id="phaseTimeFields" class="phase-time-fields"></div>
+          <div class="brief-notes">
+            <p><strong>Offline fallback:</strong> if AI is not configured, the scripted interviewer handles questions, probes, and the debrief.</p>
+            <p><strong>Practice tool:</strong> your code runs locally in a temporary folder. This is not a security sandbox.</p>
+          </div>
+          <button id="startSessionBtn" type="button" class="primary wide">Start session</button>
+          <p id="briefJdkNote" class="muted"></p>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="debriefDialog" class="modal wide-modal">
+    <div class="modal-inner">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">Debrief</p>
+          <h2 id="debriefTitle">Session review</h2>
+        </div>
+        <button id="closeDebriefBtn" type="button" class="icon-button">Close</button>
+      </div>
+      <div id="debriefBody" class="debrief-body">
+        <p class="muted">Running the final hidden tests...</p>
+      </div>
+      <div class="debrief-actions">
+        <button id="retryBtn" type="button" class="primary">Retry this scenario</button>
+        <button id="nextScenarioBtn" type="button" class="ghost">Start recommended next</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="historyDialog" class="modal wide-modal">
+    <div class="modal-inner">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">Local progress</p>
+          <h2>Session history</h2>
+        </div>
+        <button id="closeHistoryBtn" type="button" class="icon-button">Close</button>
+      </div>
+      <div id="historyBody" class="history-body"></div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

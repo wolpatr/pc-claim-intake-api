@@ -1,0 +1,242 @@
+{
+  "id": "java-claim-streams",
+  "title": "Claim analytics with streams",
+  "tagline": "Use streams and lambdas for grouped totals, averages, top-N types, and a partition; then add status totals.",
+  "difficulty": "Associate",
+  "topics": [
+    "Java",
+    "Streams",
+    "Lambdas",
+    "Functional style"
+  ],
+  "phaseTimes": {
+    "brief": 5,
+    "implement": 25,
+    "test": 10,
+    "change": 10,
+    "debrief": 10
+  },
+  "intro": "Now a streams round. The analytics endpoint reports on claims, and I want the implementation to read like a pipeline, not a pile of nested loops. We can discuss the exact grouping and ordering first.",
+  "clarifyingQuestions": [
+    {
+      "id": "style",
+      "topic": "Stream requirement",
+      "question": "Are streams required, or is any correct implementation fine?",
+      "keywords": [
+        "stream",
+        "lambda",
+        "required",
+        "loop",
+        "style",
+        "functional"
+      ],
+      "answer": "I want to see streams and lambdas in this round, because that is the skill under test. A loop that works is not sufficient for the debrief, even if the tests pass.",
+      "coach": "Ask whether streams are mandatory or just preferred."
+    },
+    {
+      "id": "nulls",
+      "topic": "Null and empty inputs",
+      "question": "How should null lists, claims, and amounts behave?",
+      "keywords": [
+        "null",
+        "empty",
+        "skip",
+        "amount",
+        "list"
+      ],
+      "answer": "A null list returns an empty map or empty list, and averages return 0.0. Null claims are skipped. Claims with a null amount are skipped by money calculations but still exist in the raw input.",
+      "coach": "Ask how null data is filtered before streaming."
+    },
+    {
+      "id": "ordering",
+      "topic": "Grouping order",
+      "question": "Do map keys and top-N results have a required order?",
+      "keywords": [
+        "order",
+        "sorted",
+        "key",
+        "top",
+        "tie",
+        "alphabetical"
+      ],
+      "answer": "All map keys are sorted alphabetically. topTypesByTotal sorts by total descending, then type ascending. highValueIds sorts both id lists ascending. A non-positive limit returns an empty list.",
+      "coach": "Ask about deterministic key order and tie-breaking."
+    },
+    {
+      "id": "partition",
+      "topic": "High-value rule",
+      "question": "Is the threshold inclusive?",
+      "keywords": [
+        "threshold",
+        "high",
+        "value",
+        "inclusive",
+        "greater",
+        "partition"
+      ],
+      "answer": "High value means strictly greater than the threshold. Amounts equal to the threshold go in the false bucket. A null threshold acts as zero.",
+      "coach": "Ask whether the partition boundary is inclusive."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "What change comes after this?",
+      "keywords": [
+        "change",
+        "follow-up",
+        "status",
+        "total",
+        "largest"
+      ],
+      "answer": "Expect totals by status and a largest-claim lookup for a type, both in the same stream style with deterministic ordering.",
+      "coach": "Ask what follow-up analytics are coming."
+    }
+  ],
+  "clarifyingFallback": "Assume small in-memory data and deterministic output. When a rule is open, choose the option that makes the result stable and say it out loud.",
+  "problemStatement": "### Context\n\nThe claims dashboard needs analytics over an in-memory list of claims.\n\n### Your task\n\nImplement these static methods in ClaimAnalytics:\n\n1. totalByType(claims): Map of trimmed claim type to total amount.\n2. averageAmountByType(claims): Map of trimmed claim type to average amount.\n3. topTypesByTotal(claims, n): types ordered by total descending, ties by type ascending.\n4. highValueIds(claims, threshold): partition ids into true (amount strictly greater than threshold) and false.\n5. averageDaysOpenForStatus(claims, status): average days open for a status.\n\n### Rules\n\n- Map keys are sorted alphabetically. Use a sorted map or sort the keys.\n- A null input list returns an empty map or list. Averages over no matching claims return 0.0.\n- Skip null claims, null amounts for money calculations, null ids for id lists, and blank claim types.\n- highValueIds skips null claims and null ids and sorts both id lists ascending. A null threshold means zero.\n- averageDaysOpenForStatus matches status trimmed and case-insensitive. Null or blank status returns 0.0.\n- topTypesByTotal with n <= 0 returns an empty list.\n- Use streams and lambdas. A pure loop implementation is not the target.\n\n### Visible examples\n\n- AUTO 100 and AUTO 200: total 300, average 150.\n- highValueIds with threshold 100: amount 100 is false, amount 200 is true.\n- Status \" open \" and \"OPEN\" both count for OPEN.",
+  "fileName": "ClaimAnalytics.java",
+  "starterCode": "import java.math.BigDecimal;\nimport java.util.List;\nimport java.util.Map;\n\npublic final class ClaimAnalytics {\n\n    public record Claim(String id, String claimType, String status, BigDecimal amount, int daysOpen) {\n    }\n\n    private ClaimAnalytics() {\n    }\n\n    public static Map<String, BigDecimal> totalByType(List<Claim> claims) {\n        // TODO: sorted alphabetically by claim type. Skip null claims, null amounts, and blank types.\n        return Map.of();\n    }\n\n    public static Map<String, Double> averageAmountByType(List<Claim> claims) {\n        // TODO: sorted alphabetically by claim type. Skip null claims and null amounts.\n        return Map.of();\n    }\n\n    public static List<String> topTypesByTotal(List<Claim> claims, int n) {\n        // TODO: total descending, ties by type ascending. n <= 0 returns empty.\n        return List.of();\n    }\n\n    public static Map<Boolean, List<String>> highValueIds(List<Claim> claims, BigDecimal threshold) {\n        // TODO: true when amount > threshold, false otherwise. Null amount is false.\n        // Skip null claims and null ids. Both id lists are sorted ascending.\n        return Map.of();\n    }\n\n    public static double averageDaysOpenForStatus(List<Claim> claims, String status) {\n        // TODO: status match is trimmed and case-insensitive. No match returns 0.0.\n        return 0.0;\n    }\n}\n",
+  "examples": [
+    {
+      "input": "totalByType([AUTO 100, AUTO 200, HOME 50])",
+      "output": "{AUTO=300, HOME=50} with sorted keys"
+    },
+    {
+      "input": "topTypesByTotal(claims, 2)",
+      "output": "two types by total descending"
+    },
+    {
+      "input": "averageDaysOpenForStatus(claims, \"OPEN\")",
+      "output": "average of matching days, else 0.0"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "totals are grouped and sorted by type",
+      "className": "TotalByTypeTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class TotalByTypeTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimAnalytics.Claim(\"C-1\", \"AUTO\", \"OPEN\", new BigDecimal(\"100.00\"), 3),\n                new ClaimAnalytics.Claim(\"C-2\", \"AUTO\", \"CLOSED\", new BigDecimal(\"200.00\"), 5),\n                new ClaimAnalytics.Claim(\"C-3\", \"HOME\", \"OPEN\", new BigDecimal(\"50.00\"), 2));\n        var totals = ClaimAnalytics.totalByType(claims);\n        TestSupport.eq(List.of(\"AUTO\", \"HOME\"), new java.util.ArrayList<>(totals.keySet()), \"sorted type keys\");\n        TestSupport.check(totals.get(\"AUTO\").compareTo(new BigDecimal(\"300\")) == 0, \"AUTO total was \" + totals.get(\"AUTO\"));\n        TestSupport.check(totals.get(\"HOME\").compareTo(new BigDecimal(\"50\")) == 0, \"HOME total was \" + totals.get(\"HOME\"));\n        System.out.println(\"PASS: totals are grouped and sorted by type\");\n    }\n}\n"
+    },
+    {
+      "name": "averages are grouped by type",
+      "className": "AverageByTypeTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class AverageByTypeTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimAnalytics.Claim(\"C-1\", \"AUTO\", \"OPEN\", new BigDecimal(\"100.00\"), 3),\n                new ClaimAnalytics.Claim(\"C-2\", \"AUTO\", \"CLOSED\", new BigDecimal(\"200.00\"), 5),\n                new ClaimAnalytics.Claim(\"C-3\", \"HOME\", \"OPEN\", new BigDecimal(\"50.00\"), 2));\n        var averages = ClaimAnalytics.averageAmountByType(claims);\n        TestSupport.near(150.0, averages.get(\"AUTO\"), 0.0001, \"AUTO average\");\n        TestSupport.near(50.0, averages.get(\"HOME\"), 0.0001, \"HOME average\");\n        TestSupport.eq(List.of(\"AUTO\", \"HOME\"), new java.util.ArrayList<>(averages.keySet()), \"sorted average keys\");\n        System.out.println(\"PASS: averages are grouped by type\");\n    }\n}\n"
+    },
+    {
+      "name": "top types sort by total then type",
+      "className": "TopTypesTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class TopTypesTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimAnalytics.Claim(\"C-1\", \"PROPERTY\", \"OPEN\", new BigDecimal(\"300.00\"), 1),\n                new ClaimAnalytics.Claim(\"C-2\", \"AUTO\", \"OPEN\", new BigDecimal(\"300.00\"), 1),\n                new ClaimAnalytics.Claim(\"C-3\", \"HOME\", \"OPEN\", new BigDecimal(\"100.00\"), 1));\n        TestSupport.eq(List.of(\"AUTO\", \"PROPERTY\"), ClaimAnalytics.topTypesByTotal(claims, 2), \"top two with tie-break\");\n        TestSupport.eq(List.of(), ClaimAnalytics.topTypesByTotal(claims, 0), \"zero limit\");\n        System.out.println(\"PASS: top types sort by total then type\");\n    }\n}\n"
+    },
+    {
+      "name": "high value ids are partitioned and sorted",
+      "className": "HighValuePartitionTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class HighValuePartitionTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimAnalytics.Claim(\"C-3\", \"AUTO\", \"OPEN\", new BigDecimal(\"200.00\"), 1),\n                new ClaimAnalytics.Claim(\"C-1\", \"AUTO\", \"OPEN\", new BigDecimal(\"100.00\"), 1),\n                new ClaimAnalytics.Claim(\"C-2\", \"AUTO\", \"OPEN\", null, 1));\n        var partition = ClaimAnalytics.highValueIds(claims, new BigDecimal(\"100\"));\n        TestSupport.eq(List.of(\"C-3\"), partition.get(true), \"high ids\");\n        TestSupport.eq(List.of(\"C-1\", \"C-2\"), partition.get(false), \"low ids\");\n        System.out.println(\"PASS: high value ids are partitioned and sorted\");\n    }\n}\n"
+    },
+    {
+      "name": "average days open matches status case-insensitively",
+      "className": "AverageDaysTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class AverageDaysTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimAnalytics.Claim(\"C-1\", \"AUTO\", \" open \", new BigDecimal(\"1\"), 2),\n                new ClaimAnalytics.Claim(\"C-2\", \"AUTO\", \"OPEN\", new BigDecimal(\"1\"), 4),\n                new ClaimAnalytics.Claim(\"C-3\", \"AUTO\", \"CLOSED\", new BigDecimal(\"1\"), 10));\n        TestSupport.near(3.0, ClaimAnalytics.averageDaysOpenForStatus(claims, \" open \"), 0.0001, \"OPEN average days\");\n        TestSupport.near(0.0, ClaimAnalytics.averageDaysOpenForStatus(claims, \"MISSING\"), 0.0001, \"no match\");\n        TestSupport.near(0.0, ClaimAnalytics.averageDaysOpenForStatus(claims, null), 0.0001, \"null status\");\n        System.out.println(\"PASS: average days open matches status case-insensitively\");\n    }\n}\n"
+    },
+    {
+      "name": "null claims and amounts are ignored",
+      "className": "IgnoreNullsTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class IgnoreNullsTest {\n    public static void main(String[] args) {\n        var claims = java.util.Arrays.asList(\n                null,\n                new ClaimAnalytics.Claim(\"C-1\", \"AUTO\", \"OPEN\", null, 1),\n                new ClaimAnalytics.Claim(\"C-2\", \"AUTO\", \"OPEN\", new BigDecimal(\"100\"), 1));\n        var totals = ClaimAnalytics.totalByType(claims);\n        TestSupport.eq(1, totals.size(), \"only one type has a total\");\n        TestSupport.check(totals.get(\"AUTO\").compareTo(new BigDecimal(\"100\")) == 0, \"total ignores null amount\");\n        System.out.println(\"PASS: null claims and amounts are ignored\");\n    }\n}\n"
+    },
+    {
+      "name": "null lists produce empty analytics",
+      "className": "NullListTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class NullListTest {\n    public static void main(String[] args) {\n        TestSupport.eq(Map.of(), ClaimAnalytics.totalByType(null), \"null totals\");\n        TestSupport.eq(Map.of(), ClaimAnalytics.averageAmountByType(null), \"null averages\");\n        TestSupport.eq(List.of(), ClaimAnalytics.topTypesByTotal(null, 3), \"null top types\");\n        TestSupport.near(0.0, ClaimAnalytics.averageDaysOpenForStatus(null, \"OPEN\"), 0.0001, \"null days average\");\n        System.out.println(\"PASS: null lists produce empty analytics\");\n    }\n}\n"
+    }
+  ],
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 5,
+      "phase": "implement",
+      "text": "Which collector gives you sorted keys for free, and why is a HashMap a bad default here?"
+    },
+    {
+      "atMinute": 15,
+      "phase": "implement",
+      "text": "Where do null amounts get filtered in your pipeline, and does that change the average denominator?"
+    }
+  ],
+  "fallbackProbe": "Which operation is clearer as a stream, and which one would you leave as a loop? Defend the choice.",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me the questions you would ask a real interviewer. When you are ready, tell me your plan and start the clock.",
+    "implement": "The implementation timer is running. Talk through your approach as you code, and tell me when you want to run the tests.",
+    "test": "Run the tests. Read the first failure carefully, say what you think caused it, then fix it.",
+    "change": "Here is the change request. Treat it as new scope from the interviewer, not as a rewrite of everything you have done.",
+    "debrief": "Time is up. Let us review what happened: the tests, the rubric, your questions, and the hints you used."
+  },
+  "hints": [
+    "Filter nulls first, then group with groupingBy into a TreeMap. Use Collectors.reducing for totals and averagingDouble for averages.",
+    "For top types, stream the entry set and sort with comparingByValue(reverseOrder).thenComparing(comparingByKey). Use limit and map to keys.",
+    "For the partition, keep two ArrayLists, stream or loop once, then sort and wrap in List.copyOf. For the change, totalByStatus can reuse the same collecting pattern with a normalization lambda."
+  ],
+  "changeRequest": {
+    "prompt": "Add status totals and the largest claim for a type.",
+    "statement": "### Change request\n\nThe dashboard adds two cards.\n\nAdd:\n\n1. totalByStatus(claims): Map of normalized status to total amount.\n2. largestClaimForType(claims, claimType): Optional of the largest claim for that type.\n\nRequirements:\n\n- totalByStatus trims and uppercases statuses. Null or blank becomes UNKNOWN. Keys are sorted alphabetically. Null claims and null amounts are skipped.\n- largestClaimForType matches claim type trimmed and case-insensitive, ignores null claims and null amounts, and breaks amount ties by id ascending. It returns Optional.empty() for no match, blank type, or null list.\n- Use streams and lambdas.\n- The original methods must keep working.",
+    "starterCode": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.Comparator;\nimport java.util.DoubleSummaryStatistics;\nimport java.util.LinkedHashMap;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Objects;\nimport java.util.TreeMap;\nimport java.util.stream.Collectors;\n\npublic final class ClaimAnalytics {\n\n    public record Claim(String id, String claimType, String status, BigDecimal amount, int daysOpen) {\n    }\n\n    private ClaimAnalytics() {\n    }\n\n    public static Map<String, BigDecimal> totalByType(List<Claim> claims) {\n        if (claims == null) {\n            return Map.of();\n        }\n        return claims.stream()\n                .filter(Objects::nonNull)\n                .filter(claim -> claim.amount() != null)\n                .filter(claim -> claim.claimType() != null && !claim.claimType().trim().isEmpty())\n                .collect(Collectors.groupingBy(\n                        claim -> claim.claimType().trim(),\n                        TreeMap::new,\n                        Collectors.reducing(BigDecimal.ZERO, Claim::amount, BigDecimal::add)));\n    }\n\n    public static Map<String, Double> averageAmountByType(List<Claim> claims) {\n        if (claims == null) {\n            return Map.of();\n        }\n        return claims.stream()\n                .filter(Objects::nonNull)\n                .filter(claim -> claim.amount() != null)\n                .filter(claim -> claim.claimType() != null && !claim.claimType().trim().isEmpty())\n                .collect(Collectors.groupingBy(\n                        claim -> claim.claimType().trim(),\n                        TreeMap::new,\n                        Collectors.averagingDouble(claim -> claim.amount().doubleValue())));\n    }\n\n    public static List<String> topTypesByTotal(List<Claim> claims, int n) {\n        if (n <= 0) {\n            return List.of();\n        }\n        return totalByType(claims).entrySet().stream()\n                .sorted(Map.Entry.<String, BigDecimal>comparingByValue(Comparator.reverseOrder())\n                        .thenComparing(Map.Entry.comparingByKey()))\n                .limit(n)\n                .map(Map.Entry::getKey)\n                .toList();\n    }\n\n    public static Map<Boolean, List<String>> highValueIds(List<Claim> claims, BigDecimal threshold) {\n        BigDecimal cut = threshold == null ? BigDecimal.ZERO : threshold;\n        List<String> high = new ArrayList<>();\n        List<String> low = new ArrayList<>();\n        if (claims != null) {\n            for (Claim claim : claims) {\n                if (claim == null || claim.id() == null) {\n                    continue;\n                }\n                boolean isHigh = claim.amount() != null && claim.amount().compareTo(cut) > 0;\n                (isHigh ? high : low).add(claim.id());\n            }\n        }\n        high.sort(String::compareTo);\n        low.sort(String::compareTo);\n        Map<Boolean, List<String>> result = new LinkedHashMap<>();\n        result.put(true, List.copyOf(high));\n        result.put(false, List.copyOf(low));\n        return result;\n    }\n\n    public static double averageDaysOpenForStatus(List<Claim> claims, String status) {\n        if (claims == null || status == null || status.trim().isEmpty()) {\n            return 0.0;\n        }\n        java.util.IntSummaryStatistics stats = claims.stream()\n                .filter(Objects::nonNull)\n                .filter(claim -> claim.status() != null && claim.status().trim().equalsIgnoreCase(status.trim()))\n                .mapToInt(Claim::daysOpen)\n                .summaryStatistics();\n        return stats.getCount() == 0 ? 0.0 : stats.getAverage();\n    }\n\n    public static Map<String, BigDecimal> totalByStatus(List<Claim> claims) {\n        // TODO: total amount per trimmed, uppercased status. Blank or null status is UNKNOWN.\n        // Skip null claims and null amounts. Keys are sorted alphabetically.\n        return Map.of();\n    }\n\n    public static java.util.Optional<Claim> largestClaimForType(List<Claim> claims, String claimType) {\n        // TODO: largest amount for the type, ignoring case and surrounding spaces.\n        // Break ties by id ascending. Empty when there is no match.\n        return java.util.Optional.empty();\n    }\n\n    private static String normalizedStatus(String status) {\n        return status == null || status.trim().isEmpty() ? \"UNKNOWN\" : status.trim().toUpperCase();\n    }\n}\n",
+    "fileName": "ClaimAnalytics.java",
+    "hiddenTests": [
+      {
+        "name": "totals group by normalized status",
+        "className": "TotalByStatusTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class TotalByStatusTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimAnalytics.Claim(\"C-1\", \"AUTO\", \" open \", new BigDecimal(\"100.00\"), 1),\n                new ClaimAnalytics.Claim(\"C-2\", \"AUTO\", \"OPEN\", new BigDecimal(\"50.00\"), 1),\n                new ClaimAnalytics.Claim(\"C-3\", \"AUTO\", null, new BigDecimal(\"25.00\"), 1));\n        var totals = ClaimAnalytics.totalByStatus(claims);\n        TestSupport.eq(List.of(\"OPEN\", \"UNKNOWN\"), new java.util.ArrayList<>(totals.keySet()), \"sorted status keys\");\n        TestSupport.check(totals.get(\"OPEN\").compareTo(new BigDecimal(\"150\")) == 0, \"OPEN total was \" + totals.get(\"OPEN\"));\n        TestSupport.check(totals.get(\"UNKNOWN\").compareTo(new BigDecimal(\"25\")) == 0, \"UNKNOWN total\");\n        System.out.println(\"PASS: totals group by normalized status\");\n    }\n}\n"
+      },
+      {
+        "name": "largest claim for a type breaks ties by id",
+        "className": "LargestClaimTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class LargestClaimTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimAnalytics.Claim(\"B\", \" auto \", \"OPEN\", new BigDecimal(\"500.00\"), 1),\n                new ClaimAnalytics.Claim(\"A\", \"AUTO\", \"OPEN\", new BigDecimal(\"500.00\"), 1),\n                new ClaimAnalytics.Claim(\"C\", \"AUTO\", \"OPEN\", new BigDecimal(\"200.00\"), 1));\n        var largest = ClaimAnalytics.largestClaimForType(claims, \"AUTO\");\n        TestSupport.check(largest.isPresent(), \"largest must be present\");\n        TestSupport.eq(\"A\", largest.get().id(), \"tie-break by id ascending\");\n        System.out.println(\"PASS: largest claim for a type breaks ties by id\");\n    }\n}\n"
+      },
+      {
+        "name": "largest claim is empty when no type matches",
+        "className": "LargestMissingTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class LargestMissingTest {\n    public static void main(String[] args) {\n        var claims = List.of(new ClaimAnalytics.Claim(\"A\", \"AUTO\", \"OPEN\", new BigDecimal(\"100\"), 1));\n        TestSupport.check(ClaimAnalytics.largestClaimForType(claims, \"HOME\").isEmpty(), \"unknown type\");\n        TestSupport.check(ClaimAnalytics.largestClaimForType(claims, null).isEmpty(), \"null type\");\n        TestSupport.check(ClaimAnalytics.largestClaimForType(null, \"AUTO\").isEmpty(), \"null list\");\n        System.out.println(\"PASS: largest claim is empty when no type matches\");\n    }\n}\n"
+      },
+      {
+        "name": "largest claim ignores null claims and null amounts",
+        "className": "LargestIgnoresNullsTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class LargestIgnoresNullsTest {\n    public static void main(String[] args) {\n        var claims = java.util.Arrays.asList(\n                null,\n                new ClaimAnalytics.Claim(\"C-1\", \"AUTO\", \"OPEN\", null, 1),\n                new ClaimAnalytics.Claim(\"C-2\", \"AUTO\", \"OPEN\", new BigDecimal(\"40\"), 1));\n        var largest = ClaimAnalytics.largestClaimForType(claims, \"AUTO\");\n        TestSupport.check(largest.isPresent(), \"largest must be present\");\n        TestSupport.eq(\"C-2\", largest.get().id(), \"only non-null amount counts\");\n        System.out.println(\"PASS: largest claim ignores null claims and null amounts\");\n    }\n}\n"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 30,
+      "criterion": "Base analytics pass the hidden suite",
+      "strongAnswer": "Totals, averages, top types, partition, and status averages all pass with sorted deterministic output."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "Status totals and largest claim pass the hidden suite",
+      "strongAnswer": "The new pipelines reuse the same filtering style and handle normalization and tie-breaking correctly."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Clarified ordering and null rules",
+      "strongAnswer": "Asked about stream expectations, null filtering, sorted keys, and the strict threshold before coding."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Worked independently",
+      "strongAnswer": "Chose appropriate collectors and comparators with no hints or one hint after a real attempt."
+    },
+    {
+      "id": "efficiency",
+      "type": "efficiency",
+      "weight": 10,
+      "criterion": "Worked within the phase budget",
+      "strongAnswer": "Finished the pipelines and the change request without leaving dead or duplicated code."
+    }
+  ],
+  "referenceSolution": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.Comparator;\nimport java.util.DoubleSummaryStatistics;\nimport java.util.LinkedHashMap;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Objects;\nimport java.util.TreeMap;\nimport java.util.stream.Collectors;\n\npublic final class ClaimAnalytics {\n\n    public record Claim(String id, String claimType, String status, BigDecimal amount, int daysOpen) {\n    }\n\n    private ClaimAnalytics() {\n    }\n\n    public static Map<String, BigDecimal> totalByType(List<Claim> claims) {\n        if (claims == null) {\n            return Map.of();\n        }\n        return claims.stream()\n                .filter(Objects::nonNull)\n                .filter(claim -> claim.amount() != null)\n                .filter(claim -> claim.claimType() != null && !claim.claimType().trim().isEmpty())\n                .collect(Collectors.groupingBy(\n                        claim -> claim.claimType().trim(),\n                        TreeMap::new,\n                        Collectors.reducing(BigDecimal.ZERO, Claim::amount, BigDecimal::add)));\n    }\n\n    public static Map<String, Double> averageAmountByType(List<Claim> claims) {\n        if (claims == null) {\n            return Map.of();\n        }\n        return claims.stream()\n                .filter(Objects::nonNull)\n                .filter(claim -> claim.amount() != null)\n                .filter(claim -> claim.claimType() != null && !claim.claimType().trim().isEmpty())\n                .collect(Collectors.groupingBy(\n                        claim -> claim.claimType().trim(),\n                        TreeMap::new,\n                        Collectors.averagingDouble(claim -> claim.amount().doubleValue())));\n    }\n\n    public static List<String> topTypesByTotal(List<Claim> claims, int n) {\n        if (n <= 0) {\n            return List.of();\n        }\n        return totalByType(claims).entrySet().stream()\n                .sorted(Map.Entry.<String, BigDecimal>comparingByValue(Comparator.reverseOrder())\n                        .thenComparing(Map.Entry.comparingByKey()))\n                .limit(n)\n                .map(Map.Entry::getKey)\n                .toList();\n    }\n\n    public static Map<Boolean, List<String>> highValueIds(List<Claim> claims, BigDecimal threshold) {\n        BigDecimal cut = threshold == null ? BigDecimal.ZERO : threshold;\n        List<String> high = new ArrayList<>();\n        List<String> low = new ArrayList<>();\n        if (claims != null) {\n            for (Claim claim : claims) {\n                if (claim == null || claim.id() == null) {\n                    continue;\n                }\n                boolean isHigh = claim.amount() != null && claim.amount().compareTo(cut) > 0;\n                (isHigh ? high : low).add(claim.id());\n            }\n        }\n        high.sort(String::compareTo);\n        low.sort(String::compareTo);\n        Map<Boolean, List<String>> result = new LinkedHashMap<>();\n        result.put(true, List.copyOf(high));\n        result.put(false, List.copyOf(low));\n        return result;\n    }\n\n    public static double averageDaysOpenForStatus(List<Claim> claims, String status) {\n        if (claims == null || status == null || status.trim().isEmpty()) {\n            return 0.0;\n        }\n        java.util.IntSummaryStatistics stats = claims.stream()\n                .filter(Objects::nonNull)\n                .filter(claim -> claim.status() != null && claim.status().trim().equalsIgnoreCase(status.trim()))\n                .mapToInt(Claim::daysOpen)\n                .summaryStatistics();\n        return stats.getCount() == 0 ? 0.0 : stats.getAverage();\n    }\n\n    public static Map<String, BigDecimal> totalByStatus(List<Claim> claims) {\n        if (claims == null) {\n            return Map.of();\n        }\n        return claims.stream()\n                .filter(Objects::nonNull)\n                .filter(claim -> claim.amount() != null)\n                .collect(Collectors.groupingBy(\n                        claim -> normalizedStatus(claim.status()),\n                        TreeMap::new,\n                        Collectors.reducing(BigDecimal.ZERO, Claim::amount, BigDecimal::add)));\n    }\n\n    public static java.util.Optional<Claim> largestClaimForType(List<Claim> claims, String claimType) {\n        if (claims == null || claimType == null || claimType.trim().isEmpty()) {\n            return java.util.Optional.empty();\n        }\n        return claims.stream()\n                .filter(Objects::nonNull)\n                .filter(claim -> claim.amount() != null)\n                .filter(claim -> claim.claimType() != null\n                        && claim.claimType().trim().equalsIgnoreCase(claimType.trim()))\n                .max(Comparator\n                        .comparing(Claim::amount)\n                        .thenComparing(claim -> claim.id() == null ? \"\" : claim.id(), Comparator.reverseOrder()));\n    }\n\n    private static String normalizedStatus(String status) {\n        return status == null || status.trim().isEmpty() ? \"UNKNOWN\" : status.trim().toUpperCase();\n    }\n}\n"
+}

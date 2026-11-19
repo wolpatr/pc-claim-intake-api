@@ -63,7 +63,9 @@ From the repository root:
 node quiz/validate.mjs
 ```
 
-The check fails (nonzero exit) on duplicate ids, unknown topics, a
-multiple-choice question that does not have exactly four options, an
-out-of-range answer index, an empty explanation, or a topic with fewer than 10
-questions. Run it after editing questions.
+The check fails (nonzero exit) on duplicate topic or question ids, unknown
+topics, a missing topic name or prompt, an empty explanation, a multiple-choice
+question that does not have exactly four options, an out-of-range answer index,
+malformed true/false options or answers, and a topic with fewer than 10
+questions or without at least one multiple-choice and one true/false question.
+Run it after editing questions.

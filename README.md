@@ -9,6 +9,19 @@ A small P&C (property & casualty) claim-intake REST API in Java. This is a **lea
 - Retrieve a claim
 - Update a claim's status
 
+## What exists today: the claim domain model
+
+The repository currently contains a typed, in-memory domain model for claim intake, covered by JUnit 5 tests. There is no HTTP/REST layer yet.
+
+- `com.example.claimintake.domain` — immutable `Claim`, the claimant-supplied `ClaimSubmission`, the `ClaimStatus` enum (`OPEN`, `IN_REVIEW`, `CLOSED`), and the `ClaimType` enum.
+- `com.example.claimintake.validation` — `ClaimValidator` checks required fields, email and phone format, incident date, and amount, then throws a `ValidationException` that lists every problem found.
+- `com.example.claimintake.repository` — `ClaimRepository` interface with an in-memory implementation. Claims live only as long as the process.
+- `com.example.claimintake.service` — `ClaimService` interface and implementation for submitting a claim, retrieving it by id, and updating its status.
+
+Run the tests with `./mvnw test` (`mvnw.cmd test` on Windows). Java 17 or newer is required.
+
+REST endpoints, persistence, and CI are later steps in the plan.
+
 ## Stack
 
 - Java

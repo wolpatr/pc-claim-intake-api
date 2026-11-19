@@ -13,6 +13,28 @@ const HOST = '127.0.0.1';
 const PORT = Number(process.env.INTERVIEW_SIM_PORT || 4321);
 const MAX_BODY = 3 * 1024 * 1024;
 
+const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
+const ALLOWED_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
+if (PORT === 80) {
+  ALLOWED_HOSTS.add('127.0.0.1');
+  ALLOWED_HOSTS.add('localhost');
+  ALLOWED_ORIGINS.add('http://127.0.0.1');
+  ALLOWED_ORIGINS.add('http://localhost');
+}
+
+function isAllowedHost(hostHeader) {
+  return Boolean(hostHeader) && ALLOWED_HOSTS.has(String(hostHeader).toLowerCase());
+}
+
+function isAllowedOrigin(originHeader) {
+  return !originHeader || ALLOWED_ORIGINS.has(String(originHeader).toLowerCase());
+}
+
+function isJsonContentType(request) {
+  const type = String(request.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  return type === 'application/json';
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -217,9 +239,21 @@ async function handleApi(request, response, url) {
 }
 
 const server = http.createServer(async (request, response) => {
+  if (!isAllowedHost(request.headers.host)) {
+    sendJson(response, 403, { error: 'Forbidden host.' });
+    return;
+  }
   const url = new URL(request.url || '/', `http://${HOST}:${PORT}`);
   try {
     if (url.pathname.startsWith('/api/')) {
+      if (!isAllowedOrigin(request.headers.origin)) {
+        sendJson(response, 403, { error: 'Forbidden origin.' });
+        return;
+      }
+      if (request.method === 'POST' && !isJsonContentType(request)) {
+        sendJson(response, 415, { error: 'Content-Type must be application/json.' });
+        return;
+      }
       const handled = await handleApi(request, response, url);
       if (!handled) sendJson(response, 404, { error: 'Unknown API route.' });
       return;

@@ -7,7 +7,7 @@ const PHASES = [
 ];
 
 const HINT_LABELS = ['nudge', 'direction', 'near answer'];
-const HINT_SCORES = [1, 0.65, 0.35, 0.15];
+const HINT_SCORES = [1, 0.8, 0.6, 0.4];
 
 const state = {
   scenarios: [],
@@ -185,6 +185,10 @@ function duration(seconds) {
 
 function currentPhase() {
   return PHASES[state.phaseIndex].key;
+}
+
+function activePhaseKeys() {
+  return PHASES.filter((phase) => phase.key !== 'debrief').map((phase) => phase.key);
 }
 
 function totalPhaseMinutes(phaseTimes) {
@@ -400,14 +404,14 @@ function tick() {
   const delta = Math.max(0, (now - state.lastTick) / 1000);
   state.lastTick = now;
   const key = currentPhase();
+  const before = state.budgets[key] - state.elapsed[key];
   state.elapsed[key] += delta;
   state.remaining = Math.max(0, state.budgets[key] - state.elapsed[key]);
   checkProbes(key);
   renderTimer();
 
-  if (state.remaining <= 0 && state.running) {
-    state.running = false;
-    addMessage('system', 'Time is up for this phase. Press Next phase when you are ready, or keep working if you need a moment.');
+  if (state.remaining <= 0 && before > 0) {
+    addMessage('system', 'Time is up for this phase. Overtime keeps counting against time discipline; press Next phase when you are ready.');
     renderPhaseUI();
     renderTimer();
   }
@@ -574,6 +578,7 @@ async function submitClarify(event) {
   const question = input.value.trim();
   if (!question || state.clarifyBusy || currentPhase() === 'debrief') return;
 
+  const token = state.sessionToken;
   state.clarifyBusy = true;
   input.disabled = true;
   $('clarifyForm').querySelector('button').disabled = true;
@@ -591,6 +596,7 @@ async function submitClarify(event) {
       body: JSON.stringify({ scenarioId: state.scenario.id, question }),
     });
     typing.remove();
+    if (token !== state.sessionToken) return;
     addMessage('interviewer', answer.answer, {
       meta: answer.source === 'ai' ? 'AI answer' : 'Scripted answer',
       source: answer.source,
@@ -601,14 +607,17 @@ async function submitClarify(event) {
     }
   } catch (error) {
     typing.remove();
+    if (token !== state.sessionToken) return;
     addMessage('system', `The interviewer could not answer: ${error.message}`);
     showToast(error.message);
   } finally {
-    state.clarifyBusy = false;
-    if (currentPhase() !== 'debrief') {
-      input.disabled = false;
-      $('clarifyForm').querySelector('button').disabled = false;
-      input.focus();
+    if (token === state.sessionToken) {
+      state.clarifyBusy = false;
+      if (currentPhase() !== 'debrief') {
+        input.disabled = false;
+        $('clarifyForm').querySelector('button').disabled = false;
+        input.focus();
+      }
     }
   }
 }
@@ -636,6 +645,7 @@ function requestHint() {
 
 async function requestProbe() {
   if (!state.scenario || state.probeBusy || currentPhase() === 'debrief') return;
+  const token = state.sessionToken;
   state.probeBusy = true;
   renderPhaseUI();
   try {
@@ -650,6 +660,7 @@ async function requestProbe() {
         usedProbes: state.probesSeen,
       }),
     });
+    if (token !== state.sessionToken) return;
     state.probesSeen.push(probe.text);
     addMessage('interviewer', probe.text, {
       meta: probe.source === 'ai' ? 'AI follow-up probe' : 'Scripted probe',
@@ -657,10 +668,12 @@ async function requestProbe() {
       tone: 'probe',
     });
   } catch (error) {
-    showToast(error.message);
+    if (token === state.sessionToken) showToast(error.message);
   } finally {
-    state.probeBusy = false;
-    renderPhaseUI();
+    if (token === state.sessionToken) {
+      state.probeBusy = false;
+      renderPhaseUI();
+    }
   }
 }
 
@@ -695,6 +708,7 @@ function resetCode() {
 
 async function runTests() {
   if (state.runBusy || !state.scenario || currentPhase() === 'debrief') return;
+  const token = state.sessionToken;
   const set = currentPhase() === 'change' ? 'change' : 'base';
   state.runBusy = true;
   $('runBtn').disabled = true;
@@ -709,6 +723,7 @@ async function runTests() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scenarioId: state.scenario.id, source: $('editor').value, phase: set }),
     });
+    if (token !== state.sessionToken) return;
     if (set === 'change') state.changeRun = result;
     else state.baseRun = result;
     renderConsole(result, set);
@@ -723,6 +738,7 @@ async function runTests() {
       });
     }
   } catch (error) {
+    if (token !== state.sessionToken) return;
     output.innerHTML = '';
     const failure = document.createElement('p');
     failure.className = 'compile-fail';
@@ -731,8 +747,10 @@ async function runTests() {
     $('consoleStatus').textContent = 'Run failed';
     showToast(error.message);
   } finally {
-    state.runBusy = false;
-    renderPhaseUI();
+    if (token === state.sessionToken) {
+      state.runBusy = false;
+      renderPhaseUI();
+    }
   }
 }
 
@@ -788,18 +806,16 @@ function renderConsole(result, set) {
   $('consoleStatus').textContent = `${label} · ${passed}/${result.results.length} passing`;
 }
 
-async function runFinal(set) {
+async function runFinal(set, token) {
   try {
     const result = await api('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scenarioId: state.scenario.id, source: $('editor').value, phase: set }),
     });
-    if (set === 'change') state.changeRun = result;
-    else state.baseRun = result;
-    return result;
+    return token === state.sessionToken ? result : null;
   } catch (error) {
-    showToast(error.message);
+    if (token === state.sessionToken) showToast(error.message);
     return null;
   }
 }
@@ -824,8 +840,9 @@ function scoreSession() {
   const expectedTopics = state.scenario.clarifyingQuestions.length || 1;
   const clarifyRatio = Math.min(1, state.clarify.matched.size / expectedTopics);
   const hintRatio = HINT_SCORES[Math.min(state.hints.length, HINT_SCORES.length - 1)];
-  const totalBudget = Object.values(state.budgets).reduce((sum, value) => sum + value, 0);
-  const totalElapsed = Object.values(state.elapsed).reduce((sum, value) => sum + value, 0);
+  const scoredPhases = activePhaseKeys();
+  const totalBudget = scoredPhases.reduce((sum, key) => sum + (state.budgets[key] || 0), 0);
+  const totalElapsed = scoredPhases.reduce((sum, key) => sum + (state.elapsed[key] || 0), 0);
   const over = Math.max(0, totalElapsed - totalBudget);
   const efficiency = totalBudget > 0 ? Math.max(0, 1 - over / totalBudget) : 0;
   const sources = { tests: baseRatio, change: changeRatio, clarify: clarifyRatio, hints: hintRatio, efficiency };
@@ -893,9 +910,9 @@ async function openDebrief() {
   $('debriefTitle').textContent = `${state.scenario.title} · debrief`;
   $('debriefDialog').showModal();
 
-  const base = await runFinal('base');
+  const base = await runFinal('base', token);
   if (token !== state.sessionToken) return;
-  const change = state.scenario.changeRequest ? await runFinal('change') : null;
+  const change = state.scenario.changeRequest ? await runFinal('change', token) : null;
   if (token !== state.sessionToken) return;
   state.baseRun = base;
   state.changeRun = change;
@@ -916,7 +933,7 @@ async function openDebrief() {
       text: `The interviewer narrative could not be generated. Here is the evidence: ${scoring.score}/100 with ${scoring.missed.length} criteria below the strong band.`,
       source: 'scripted',
     };
-    showToast(error.message);
+    if (token === state.sessionToken) showToast(error.message);
   }
   if (token !== state.sessionToken) return;
 
@@ -953,11 +970,12 @@ async function openDebrief() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ record }),
       });
-      state.progress.unshift(saved.record);
+      if (token === state.sessionToken) state.progress.unshift(saved.record);
     } catch (error) {
-      showToast(`Could not save progress: ${error.message}`);
+      if (token === state.sessionToken) showToast(`Could not save progress: ${error.message}`);
     }
   }
+  if (token !== state.sessionToken) return;
 
   renderDebrief(scoring, summary, narrative);
   state.debriefRendered = true;
@@ -1118,6 +1136,7 @@ function startRecommended() {
 function exitSession() {
   if (!state.active) return;
   if (!window.confirm('Leave this session? Only a completed debrief is saved to local progress.')) return;
+  state.sessionToken += 1;
   state.active = false;
   state.running = false;
   if (state.ticker) clearInterval(state.ticker);

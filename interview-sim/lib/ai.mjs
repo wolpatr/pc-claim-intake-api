@@ -61,30 +61,103 @@ async function chat(messages, { maxTokens = 400, temperature = 0.4 } = {}) {
   }
 }
 
-function keywordScore(question, item) {
-  const normalized = String(question || '').toLowerCase();
-  let score = 0;
-  for (const keyword of item.keywords || []) {
-    const needle = String(keyword).toLowerCase();
-    if (needle && normalized.includes(needle)) score += 2;
-  }
-  for (const word of String(item.topic || '').toLowerCase().split(/[^a-z0-9]+/)) {
-    if (word.length >= 4 && normalized.includes(word)) score += 1;
-  }
-  return score;
+const FILLER_WORDS = new Set([
+  'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'do', 'does', 'did', 'should', 'would', 'will', 'can', 'could',
+  'what', 'which', 'who', 'how', 'when', 'where', 'why', 'there', 'this',
+  'that', 'it', 'its', 'of', 'to', 'in', 'on', 'at', 'for', 'and', 'or',
+  'i', 'my', 'me', 'we', 'you', 'your', 'if', 'happen', 'happens',
+]);
+
+function normalizeText(text) {
+  return String(text || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
-export function matchClarifying(scenario, question) {
+function normalizeQuestion(text) {
+  return normalizeText(text)
+    .split(' ')
+    .filter((word) => word && !FILLER_WORDS.has(word));
+}
+
+function itemKeywords(item) {
+  const seen = new Set();
+  for (const keyword of item.keywords || []) {
+    const normalized = normalizeText(keyword);
+    if (normalized) seen.add(normalized);
+  }
+  return seen;
+}
+
+function keywordOwners(items) {
+  const owners = new Map();
+  for (const item of items) {
+    for (const keyword of itemKeywords(item)) {
+      if (!owners.has(keyword)) owners.set(keyword, new Set());
+      owners.get(keyword).add(item);
+    }
+  }
+  return owners;
+}
+
+function matchByExampleQuestion(items, tokens) {
+  if (tokens.size < 2) return null;
   let best = null;
   let bestScore = 0;
-  for (const item of scenario.clarifyingQuestions || []) {
-    const score = keywordScore(question, item);
+  for (const item of items) {
+    const example = new Set(normalizeQuestion(item.question));
+    if (!example.size) continue;
+    let shared = 0;
+    for (const token of tokens) {
+      if (example.has(token)) shared += 1;
+    }
+    const score = (2 * shared) / (tokens.size + example.size);
     if (score > bestScore) {
       best = item;
       bestScore = score;
     }
   }
-  return best;
+  return bestScore >= 0.75 ? best : null;
+}
+
+function keywordScore(normalized, item, owners) {
+  let score = 0;
+  let longest = 0;
+  for (const keyword of itemKeywords(item)) {
+    if ((owners.get(keyword)?.size || 0) > 1) continue;
+    if (!normalized.includes(keyword)) continue;
+    const words = keyword.split(' ').length;
+    score += words * 2 + keyword.length / 10;
+    longest = Math.max(longest, keyword.length);
+  }
+  return { score, longest };
+}
+
+export function matchClarifying(scenario, question) {
+  const items = scenario.clarifyingQuestions || [];
+  if (!items.length) return null;
+  const normalized = normalizeQuestion(question).join(' ');
+  const tokens = new Set(normalized.split(' ').filter(Boolean));
+
+  const byQuestion = matchByExampleQuestion(items, tokens);
+  if (byQuestion) return byQuestion;
+
+  const owners = keywordOwners(items);
+  let best = null;
+  let bestScore = 0;
+  let bestLength = 0;
+  for (const item of items) {
+    const { score, longest } = keywordScore(normalized, item, owners);
+    if (score > bestScore || (score === bestScore && score > 0 && longest > bestLength)) {
+      best = item;
+      bestScore = score;
+      bestLength = longest;
+    }
+  }
+  return bestScore > 0 ? best : null;
 }
 
 function scenarioFacts(scenario) {

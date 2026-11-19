@@ -25,7 +25,6 @@ const state = {
   lastTick: 0,
   ticker: null,
   active: false,
-  probesFired: new Set(),
   probesSeen: [],
   hints: [],
   clarify: { asked: 0, matched: new Set() },
@@ -338,7 +337,6 @@ function startSession(scenario, minutes) {
   state.running = true;
   state.lastTick = performance.now();
   state.active = true;
-  state.probesFired = new Set();
   state.probesSeen = [];
   state.hints = [];
   state.clarify = { asked: 0, matched: new Set() };
@@ -417,14 +415,16 @@ function tick() {
   }
 }
 
+function recordProbe(text) {
+  if (text && !state.probesSeen.includes(text)) state.probesSeen.push(text);
+}
+
 function checkProbes(phaseKey) {
   for (const probe of state.scenario.probes || []) {
     if ((probe.phase || 'implement') !== phaseKey) continue;
-    const id = `${phaseKey}:${probe.atMinute}:${probe.text}`;
-    if (state.probesFired.has(id)) continue;
+    if (state.probesSeen.includes(probe.text)) continue;
     if (state.elapsed[phaseKey] >= Number(probe.atMinute) * 60) {
-      state.probesFired.add(id);
-      state.probesSeen.push(probe.text);
+      recordProbe(probe.text);
       addMessage('interviewer', probe.text, { meta: `Checkpoint at ${probe.atMinute} min`, tone: 'probe' });
     }
   }
@@ -661,7 +661,7 @@ async function requestProbe() {
       }),
     });
     if (token !== state.sessionToken) return;
-    state.probesSeen.push(probe.text);
+    recordProbe(probe.text);
     addMessage('interviewer', probe.text, {
       meta: probe.source === 'ai' ? 'AI follow-up probe' : 'Scripted probe',
       source: probe.source,

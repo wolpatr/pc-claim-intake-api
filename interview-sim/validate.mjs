@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { loadScenarios } from './lib/scenarios.mjs';
+import { matchClarifying } from './lib/ai.mjs';
 import { compileOnly, detectJdk, runSubmission } from './lib/java.mjs';
 
 const failures = [];
@@ -40,6 +41,7 @@ function validateSchema(scenario) {
     scenario.clarifyingQuestions.forEach((item, index) => {
       if (!isString(item.id)) problems.push(`clarifyingQuestions[${index}].id is required`);
       if (!isString(item.topic)) problems.push(`clarifyingQuestions[${index}].topic is required`);
+      if (!isString(item.question)) problems.push(`clarifyingQuestions[${index}].question is required`);
       if (!isString(item.answer)) problems.push(`clarifyingQuestions[${index}].answer is required`);
       if (!isString(item.coach)) problems.push(`clarifyingQuestions[${index}].coach is required`);
       if (!Array.isArray(item.keywords) || item.keywords.length === 0) {
@@ -156,6 +158,15 @@ async function main() {
     record(!ids.has(scenario.id), `unique id: ${scenario.id}`);
     ids.add(scenario.id);
     validateSchema(scenario);
+
+    for (const item of scenario.clarifyingQuestions || []) {
+      const matched = matchClarifying(scenario, item.question);
+      record(
+        matched?.id === item.id,
+        `clarifying example resolves to its own topic: ${scenario.id}/${item.id}`,
+        `resolved to ${matched?.id ?? 'null'}`,
+      );
+    }
 
     await checkCompiles(`starter compiles with base tests: ${scenario.id}`, {
       source: scenario.starterCode,

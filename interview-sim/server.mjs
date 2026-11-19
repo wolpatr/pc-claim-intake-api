@@ -30,6 +30,10 @@ function isAllowedOrigin(originHeader) {
   return !originHeader || ALLOWED_ORIGINS.has(String(originHeader).toLowerCase());
 }
 
+function hasClassSketch(source) {
+  return /^\s*(?:public\s+|protected\s+|private\s+|abstract\s+|final\s+|static\s+|sealed\s+|non-sealed\s+)*(?:class|interface|enum|record|@interface)\s+[A-Za-z_$]/m.test(source);
+}
+
 function isJsonContentType(request) {
   const type = String(request.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   return type === 'application/json';
@@ -157,18 +161,20 @@ async function handleApi(request, response, url) {
           design: true,
           available: false,
           compiled: false,
-          compileOutput: jdk.installSteps.join('\n'),
+          sketch: 'unavailable',
+          compileOutput: 'No JDK is available, so the optional class sketch cannot be checked. Design rounds run without a JDK; your design notes still score normally.',
           results: [],
         });
         return true;
       }
-      if (!source.trim() || !scenario.fileName) {
+      if (!hasClassSketch(source) || !scenario.fileName) {
         sendJson(response, 200, {
           set,
           design: true,
           available: true,
           compiled: false,
-          compileOutput: 'No class sketch was supplied; design notes do not need to compile.',
+          sketch: 'notes',
+          compileOutput: 'No compiling class sketch found; design notes do not need to compile.',
           results: [],
         });
         return true;
@@ -179,6 +185,7 @@ async function handleApi(request, response, url) {
         design: true,
         available: true,
         compiled: compiled.ok,
+        sketch: compiled.ok ? 'compiled' : 'failed',
         compileOutput: compiled.output,
         results: [],
       });

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const INSTALL_STEPS = [
-  'No JDK was found. The simulator will not start a session without one.',
+  'No JDK was found. Coding and debugging rounds need a JDK; design rounds run without one.',
   'Install Eclipse Temurin 17 (LTS) or 21 (LTS): https://adoptium.net/temurin/releases/',
   'Or on Windows run: winget install --id EclipseAdoptium.Temurin.21.JDK -e',
   'Set JAVA_HOME to the installed JDK folder and add its bin directory to PATH.',

@@ -837,6 +837,8 @@ async function runTests() {
         message = 'No JDK is available, so the optional class sketch cannot be checked. Your design notes are still valid.';
       } else if (result.compiled) {
         message = 'Your class sketch compiles. This is informational only and does not affect your score.';
+      } else if (result.sketch === 'notes') {
+        message = 'No compiling class sketch found, so this is notes only. Design notes never need to compile; the sketch result is informational and does not affect your score.';
       } else {
         message = 'The sketch did not compile. Design notes are still valid; the sketch result is informational and does not affect your score.';
       }
@@ -884,15 +886,20 @@ function renderConsole(result, set) {
     }
     const head = document.createElement('p');
     head.className = 'run-head';
-    head.textContent = result.compiled
+    const sketch = sketchStatusOf(result);
+    head.textContent = sketch === 'compiled'
       ? 'Sketch check: compiled (informational)'
-      : 'Sketch check: did not compile (design notes are still valid)';
+      : sketch === 'notes'
+        ? 'Sketch check: no compiling class sketch found (notes only)'
+        : 'Sketch check: did not compile (design notes are still valid)';
     output.appendChild(head);
     const detail = document.createElement('pre');
     detail.className = result.compiled ? 'test-detail ok' : 'test-detail';
     detail.textContent = result.compileOutput;
     output.appendChild(detail);
-    $('consoleStatus').textContent = result.compiled ? 'Sketch compiled · informational' : 'Notes only · sketch not compiled';
+    $('consoleStatus').textContent = sketch === 'compiled'
+      ? 'Sketch compiled · informational'
+      : sketch === 'notes' ? 'Notes only · no class sketch' : 'Sketch did not compile · informational';
     return;
   }
 
@@ -962,6 +969,20 @@ function ratio(result) {
   return result.results.filter((test) => test.passed).length / result.results.length;
 }
 
+function sketchStatusOf(run) {
+  if (run?.sketch) return run.sketch;
+  if (run?.available === false) return 'unavailable';
+  return run?.compiled ? 'compiled' : 'notes';
+}
+
+function sketchStatusLabel(run) {
+  const status = sketchStatusOf(run);
+  if (status === 'unavailable') return 'not checked, no JDK';
+  if (status === 'compiled') return 'compiled';
+  if (status === 'notes') return 'notes only, no class sketch';
+  return 'did not compile';
+}
+
 function summarizeRun(result) {
   if (result?.design) {
     return {
@@ -969,6 +990,7 @@ function summarizeRun(result) {
       total: 0,
       compiled: Boolean(result.compiled),
       available: Boolean(result.available),
+      sketch: sketchStatusOf(result),
       design: true,
     };
   }
@@ -1236,12 +1258,10 @@ function renderDebrief(scoring, summary, narrative) {
     </div>`;
   }).join('');
 
-  const sketchStatus = summary.tests.base.available === false
-    ? 'not checked (no JDK)'
-    : summary.tests.base.compiled ? 'compiled' : 'did not compile';
+  const sketchStatus = sketchStatusLabel(summary.tests.base);
 
   const testsHtml = design
-    ? `<div class="metric-row"><span>Sketch compile (informational)</span><span>${sketchStatus}</span></div>
+    ? `<div class="metric-row"><span>Sketch check (informational)</span><span>${sketchStatus}</span></div>
        <p class="muted">Design notes never need to compile. The sketch result is informational and does not affect the score.</p>`
     : [
         renderTestSummary('Base tests', summary.tests.base, state.baseRun),
@@ -1426,7 +1446,7 @@ function renderHistory(records) {
     const base = tests.base ? `${tests.base.passed}/${tests.base.total}` : '-';
     const change = tests.change ? `${tests.change.passed}/${tests.change.total}` : '-';
     const testsCell = record.roundType === 'design'
-      ? (tests.base?.available === false ? 'sketch not checked' : tests.base?.compiled ? 'sketch compiled' : 'notes only')
+      ? sketchStatusLabel(tests.base)
       : `${base} / ${change}`;
     return `<tr>
       <td>${escapeHtml(when)}</td>

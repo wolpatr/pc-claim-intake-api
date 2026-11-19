@@ -77,44 +77,74 @@ function normalizeText(text) {
     .trim();
 }
 
-function normalizeQuestion(text) {
+function singularize(word) {
+  if (word.length > 3 && word.endsWith('ies')) return `${word.slice(0, -3)}y`;
+  if (word.length > 3 && word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
+  return word;
+}
+
+function tokenize(text) {
   return normalizeText(text)
     .split(' ')
-    .filter((word) => word && !FILLER_WORDS.has(word));
+    .filter(Boolean)
+    .filter((word) => !FILLER_WORDS.has(word))
+    .map(singularize)
+    .filter(Boolean);
 }
 
-function itemKeywords(item) {
+function keywordPhrases(item) {
   const seen = new Set();
+  const phrases = [];
   for (const keyword of item.keywords || []) {
-    const normalized = normalizeText(keyword);
-    if (normalized) seen.add(normalized);
+    const tokens = tokenize(keyword);
+    if (!tokens.length) continue;
+    const key = tokens.join(' ');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    phrases.push(tokens);
   }
-  return seen;
+  return phrases;
 }
 
-function keywordOwners(items) {
-  const owners = new Map();
-  for (const item of items) {
-    for (const keyword of itemKeywords(item)) {
-      if (!owners.has(keyword)) owners.set(keyword, new Set());
-      owners.get(keyword).add(item);
+function containsPhrase(tokens, phrase) {
+  for (let index = 0; index + phrase.length <= tokens.length; index += 1) {
+    let matched = true;
+    for (let offset = 0; offset < phrase.length; offset += 1) {
+      if (tokens[index + offset] !== phrase[offset]) {
+        matched = false;
+        break;
+      }
     }
+    if (matched) return true;
   }
-  return owners;
+  return false;
+}
+
+function termDocumentFrequency(items) {
+  const frequency = new Map();
+  for (const item of items) {
+    const terms = new Set(tokenize(item.question));
+    for (const phrase of keywordPhrases(item)) {
+      for (const token of phrase) terms.add(token);
+    }
+    for (const term of terms) frequency.set(term, (frequency.get(term) || 0) + 1);
+  }
+  return frequency;
 }
 
 function matchByExampleQuestion(items, tokens) {
-  if (tokens.size < 2) return null;
+  if (tokens.length < 2) return null;
+  const query = new Set(tokens);
   let best = null;
   let bestScore = 0;
   for (const item of items) {
-    const example = new Set(normalizeQuestion(item.question));
+    const example = new Set(tokenize(item.question));
     if (!example.size) continue;
     let shared = 0;
-    for (const token of tokens) {
+    for (const token of query) {
       if (example.has(token)) shared += 1;
     }
-    const score = (2 * shared) / (tokens.size + example.size);
+    const score = (2 * shared) / (query.size + example.size);
     if (score > bestScore) {
       best = item;
       bestScore = score;
@@ -123,15 +153,18 @@ function matchByExampleQuestion(items, tokens) {
   return bestScore >= 0.75 ? best : null;
 }
 
-function keywordScore(normalized, item, owners) {
+function keywordScore(tokens, item, frequency) {
   let score = 0;
   let longest = 0;
-  for (const keyword of itemKeywords(item)) {
-    if ((owners.get(keyword)?.size || 0) > 1) continue;
-    if (!normalized.includes(keyword)) continue;
-    const words = keyword.split(' ').length;
-    score += words * 2 + keyword.length / 10;
-    longest = Math.max(longest, keyword.length);
+  const example = new Set(tokenize(item.question));
+  for (const phrase of keywordPhrases(item)) {
+    if (!containsPhrase(tokens, phrase)) continue;
+    const shared = Math.max(...phrase.map((token) => frequency.get(token) || 1));
+    const specificity = 1 + 0.5 * (phrase.length - 1);
+    const distinctiveness = shared === 1 ? 1 : 1 / (shared * shared);
+    const exampleBonus = phrase.every((token) => example.has(token)) ? 1.5 : 1;
+    score += specificity * distinctiveness * exampleBonus;
+    longest = Math.max(longest, phrase.join(' ').length);
   }
   return { score, longest };
 }
@@ -139,18 +172,18 @@ function keywordScore(normalized, item, owners) {
 export function matchClarifying(scenario, question) {
   const items = scenario.clarifyingQuestions || [];
   if (!items.length) return null;
-  const normalized = normalizeQuestion(question).join(' ');
-  const tokens = new Set(normalized.split(' ').filter(Boolean));
+  const tokens = tokenize(question);
+  if (!tokens.length) return null;
 
   const byQuestion = matchByExampleQuestion(items, tokens);
   if (byQuestion) return byQuestion;
 
-  const owners = keywordOwners(items);
+  const frequency = termDocumentFrequency(items);
   let best = null;
   let bestScore = 0;
   let bestLength = 0;
   for (const item of items) {
-    const { score, longest } = keywordScore(normalized, item, owners);
+    const { score, longest } = keywordScore(tokens, item, frequency);
     if (score > bestScore || (score === bestScore && score > 0 && longest > bestLength)) {
       best = item;
       bestScore = score;

@@ -40,9 +40,15 @@ const state = {
   runBusy: false,
   progressSaved: false,
   sessionToken: 0,
+  sessionId: null,
 };
 
 const $ = (id) => document.getElementById(id);
+
+function newSessionId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -352,6 +358,7 @@ function startSession(scenario, minutes) {
   state.runBusy = false;
   state.progressSaved = false;
   state.sessionToken += 1;
+  state.sessionId = newSessionId();
 
   $('scenarioTitle').textContent = scenario.title;
   $('scenarioDifficulty').textContent = `${scenario.difficulty} · ${scenario.fileName}`;
@@ -512,11 +519,6 @@ function jumpToPhase(index) {
   if (target === state.phaseIndex) {
     if (target === PHASES.length - 1 && state.debriefRendered) $('debriefDialog').showModal();
     return;
-  }
-  if (state.debriefRendered) {
-    state.debriefRendered = false;
-    state.debriefPrompted = false;
-    state.progressSaved = false;
   }
   state.phaseIndex = target;
   const key = currentPhase();
@@ -938,6 +940,7 @@ async function openDebrief() {
   if (token !== state.sessionToken) return;
 
   const record = {
+    sessionId: state.sessionId,
     scenarioId: state.scenario.id,
     title: state.scenario.title,
     difficulty: state.scenario.difficulty,
@@ -1084,9 +1087,21 @@ function renderTestSummary(label, summary, run) {
     ${failures.length ? `<p class="muted" style="margin-top:6px">Failed: ${escapeHtml(failures.join(', '))}</p>` : ''}`;
 }
 
+function uniqueRecords(records) {
+  const seen = new Set();
+  const unique = [];
+  for (const record of records) {
+    const key = record.sessionId || record.id || null;
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    unique.push(record);
+  }
+  return unique;
+}
+
 function topicStats(records) {
   const map = new Map();
-  for (const record of records) {
+  for (const record of uniqueRecords(records)) {
     for (const topic of record.topics || []) {
       const entry = map.get(topic) || { topic, sessions: 0, total: 0 };
       entry.sessions += 1;
@@ -1102,7 +1117,7 @@ function topicStats(records) {
 function recommendNext() {
   if (!state.scenario || !state.scenarios.length) return null;
   const current = state.scenario;
-  const records = state.progress;
+  const records = uniqueRecords(state.progress);
   const weak = topicStats(records)[0]?.topic;
   const played = (id) => records.filter((record) => record.scenarioId === id).length;
   const ranked = state.scenarios
@@ -1162,15 +1177,16 @@ async function openHistory() {
 
 function renderHistory(records) {
   const body = $('historyBody');
-  if (!records.length) {
+  const unique = uniqueRecords(records);
+  if (!unique.length) {
     body.innerHTML = '<div class="empty-state">No completed sessions yet. Finish a debrief and the record will appear here.</div>';
     return;
   }
-  const average = Math.round(records.reduce((sum, record) => sum + (Number(record.score) || 0), 0) / records.length);
-  const stats = topicStats(records);
+  const average = Math.round(unique.reduce((sum, record) => sum + (Number(record.score) || 0), 0) / unique.length);
+  const stats = topicStats(unique);
   const weakest = stats.slice(0, 4);
 
-  const rows = records.map((record) => {
+  const rows = unique.map((record) => {
     const when = record.savedAt ? new Date(record.savedAt).toLocaleString() : 'unknown';
     const tests = record.tests || {};
     const base = tests.base ? `${tests.base.passed}/${tests.base.total}` : '-';
@@ -1188,7 +1204,7 @@ function renderHistory(records) {
 
   body.innerHTML = `
     <div class="history-summary">
-      <div class="history-stat"><span>Sessions</span><strong>${records.length}</strong></div>
+      <div class="history-stat"><span>Sessions</span><strong>${unique.length}</strong></div>
       <div class="history-stat"><span>Average score</span><strong>${average}</strong></div>
       <div class="history-stat"><span>Weakest topic</span><strong>${escapeHtml(weakest[0]?.topic || 'none yet')}</strong></div>
       <div class="history-stat"><span>Topics practised</span><strong>${stats.length}</strong></div>

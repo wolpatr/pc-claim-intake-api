@@ -6,6 +6,13 @@ import { compileOnly, detectJdk, runSubmission } from './lib/java.mjs';
 const failures = [];
 const checks = [];
 
+const CLARIFY_PARAPHRASES = [
+  { scenarioId: 'claim-validation', itemId: 'order', question: 'Does the order of errors matter?' },
+  { scenarioId: 'claim-status-transition', itemId: 'same', question: 'What about the same status?' },
+  { scenarioId: 'claim-validation', itemId: 'clock', question: 'How do I test the date logic?' },
+  { scenarioId: 'claim-status-transition', itemId: 'errors', question: 'What if the transition is invalid?' },
+];
+
 function record(ok, label, detail = '') {
   checks.push({ ok, label });
   if (!ok) failures.push({ label, detail });
@@ -150,6 +157,20 @@ async function main() {
   record(scenarios.length >= 6, `scenario count: ${scenarios.length} (need at least 6)`);
 
   const ids = new Set();
+  const byId = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
+  for (const paraphrase of CLARIFY_PARAPHRASES) {
+    const scenario = byId.get(paraphrase.scenarioId);
+    if (!scenario) {
+      record(false, `clarify paraphrase scenario exists: ${paraphrase.scenarioId}`, '');
+      continue;
+    }
+    const matched = matchClarifying(scenario, paraphrase.question);
+    record(
+      matched?.id === paraphrase.itemId,
+      `clarify paraphrase resolves: ${paraphrase.scenarioId} "${paraphrase.question}"`,
+      `resolved to ${matched?.id ?? 'null'}, expected ${paraphrase.itemId}`,
+    );
+  }
   for (const scenario of scenarios) {
     if (!isString(scenario.id)) {
       record(false, `scenario file ${scenario.__file} has no id`, '');

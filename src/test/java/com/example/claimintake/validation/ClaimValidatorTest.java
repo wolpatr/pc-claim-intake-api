@@ -99,6 +99,18 @@ class ClaimValidatorTest {
     }
 
     @Test
+    void rejectsPhoneWithoutAnyDigitWhenProvided() {
+        for (String phone : List.of("-------", "()()()()", "+++++++")) {
+            ClaimSubmission submission = submission("ada@example.com", phone);
+
+            ValidationException exception = assertThrows(ValidationException.class,
+                    () -> validator.validate(submission));
+
+            assertTrue(exception.getErrors().contains("claimantPhone must be a valid phone number"));
+        }
+    }
+
+    @Test
     void rejectsFutureIncidentDate() {
         ClaimSubmission submission = new ClaimSubmission(
                 "Ada", "ada@example.com", "555-0100", "POL-1", LocalDate.now().plusDays(1),

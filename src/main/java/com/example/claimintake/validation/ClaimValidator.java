@@ -14,7 +14,7 @@ public final class ClaimValidator {
     private static final Pattern EMAIL_PATTERN =
             Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final Pattern PHONE_PATTERN =
-            Pattern.compile("^[0-9+()\\-\\s]{7,25}$");
+            Pattern.compile("^(?=.*[0-9])[0-9+()\\-\\s]{7,25}$");
 
     public void validate(ClaimSubmission submission) {
         Objects.requireNonNull(submission, "submission");

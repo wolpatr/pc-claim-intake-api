@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -62,6 +63,20 @@ class ClaimServiceImplTest {
         Claim second = service.submit(ClaimTestData.validSubmission());
 
         assertNotEquals(first.getId(), second.getId());
+    }
+
+    @Test
+    void submitFormatsIdWithAsciiDigitsRegardlessOfDefaultLocale() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("ar-EG"));
+
+            Claim claim = service.submit(ClaimTestData.validSubmission());
+
+            assertTrue(claim.getId().matches("CLM-[0-9]{6}"), claim.getId());
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.example.claimintake.validation.ClaimValidator;
 import com.example.claimintake.validation.ValidationException;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -62,6 +63,6 @@ public final class ClaimServiceImpl implements ClaimService {
     }
 
     private String nextClaimId() {
-        return CLAIM_ID_PREFIX + String.format("%06d", idSequence.incrementAndGet());
+        return CLAIM_ID_PREFIX + String.format(Locale.ROOT, "%06d", idSequence.incrementAndGet());
     }
 }

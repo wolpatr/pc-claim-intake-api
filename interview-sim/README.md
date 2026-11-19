@@ -81,7 +81,7 @@ Privacy note: when AI is enabled, the clarifying question, the current editor co
 - `Request hint` returns three graded hints: nudge, then direction, then near-answer. Every hint is recorded for scoring.
 - `Run tests` compiles and runs the hidden suite for the current phase. Test output is shown in the console.
 - In debugging rounds, the root-cause note above the console records your diagnosis in your own words and is scored separately from the fix.
-- In design rounds, `Check sketch (optional)` compiles the editor contents and reports the result as informational. Design notes do not need to compile, the sketch does not affect the score, and the round runs without a JDK.
+- In design rounds, `Check sketch (optional)` compiles the editor contents under the name of the sketch's first public type, falling back to the scenario's file name when no public type is declared. It reports the result as informational. Design notes do not need to compile, the sketch does not affect the score, and the round runs without a JDK.
 
 ## Scenarios
 
@@ -139,7 +139,7 @@ A debugging scenario also adds:
 Add:
 
 - `starterCode`: a plain-text design-notes seed. It does not need to compile, and a note-only seed is expected.
-- `fileName`: a `.java` file name used only when the candidate writes a class sketch.
+- `fileName`: the `.java` file name used for a class sketch that declares no public type; a sketch with a public class, interface, enum, or record is compiled under that type's name.
 - `design`: `{ prompt, constraints, probingQuestions }`. Constraints are strings; probing questions use the same `{ atMinute, text }` shape as `probes`. If `probes` is omitted, the loader uses the probing questions.
 - `referenceDesign`: the reference design shown in the debrief.
 - `rubric` criteria of `type: "notes"` with a `keywords` array. Design scores structure, separation of responsibilities, interface choices, extensibility, and stated trade-offs by checking the candidate's design notes, editor sketch, and typed answers for evidence.

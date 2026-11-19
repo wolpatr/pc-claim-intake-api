@@ -2,7 +2,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { compileOnly, detectJdk, runSubmission } from './lib/java.mjs';
+import { compileOnly, detectJdk, hasJavaTypeDeclaration, javaFileNameFor, runSubmission } from './lib/java.mjs';
 import { getScenario, loadScenarios, publicScenario, roundTypeOf, scenarioSummary } from './lib/scenarios.mjs';
 import { aiStatus, clarifyingAnswer, adaptiveProbe, debriefNarrative } from './lib/ai.mjs';
 import { appendProgress, readProgress } from './lib/progress.mjs';
@@ -28,10 +28,6 @@ function isAllowedHost(hostHeader) {
 
 function isAllowedOrigin(originHeader) {
   return !originHeader || ALLOWED_ORIGINS.has(String(originHeader).toLowerCase());
-}
-
-function hasClassSketch(source) {
-  return /^\s*(?:public\s+|protected\s+|private\s+|abstract\s+|final\s+|static\s+|sealed\s+|non-sealed\s+)*(?:class|interface|enum|record|@interface)\s+[A-Za-z_$]/m.test(source);
 }
 
 function isJsonContentType(request) {
@@ -167,7 +163,7 @@ async function handleApi(request, response, url) {
         });
         return true;
       }
-      if (!hasClassSketch(source) || !scenario.fileName) {
+      if (!hasJavaTypeDeclaration(source) || !scenario.fileName) {
         sendJson(response, 200, {
           set,
           design: true,
@@ -179,7 +175,12 @@ async function handleApi(request, response, url) {
         });
         return true;
       }
-      const compiled = await compileOnly({ source, fileName: scenario.fileName, testSupport: '', tests: [] });
+      const compiled = await compileOnly({
+        source,
+        fileName: javaFileNameFor(source, scenario.fileName),
+        testSupport: '',
+        tests: [],
+      });
       sendJson(response, 200, {
         set,
         design: true,

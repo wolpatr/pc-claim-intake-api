@@ -1,6 +1,12 @@
 import { loadScenarios, roundTypeOf } from './lib/scenarios.mjs';
 import { matchClarifying } from './lib/ai.mjs';
-import { compileOnly, detectJdk, runSubmission } from './lib/java.mjs';
+import {
+  compileOnly,
+  detectJdk,
+  hasJavaTypeDeclaration,
+  javaFileNameFor,
+  runSubmission,
+} from './lib/java.mjs';
 import { criterionThreshold, keywordCoverage } from './public/scoring.mjs';
 
 const failures = [];
@@ -295,6 +301,34 @@ async function main() {
     process.exit(1);
   }
   process.stdout.write(`JDK: ${jdk.version} (${jdk.source}) at ${jdk.home || jdk.javac}\n`);
+
+  const publicSketch = 'public class ReviewEngine {\n  private int reviews;\n}\n';
+  const sketchFallback = 'ClaimReviewDesign.java';
+  record(
+    javaFileNameFor(publicSketch, sketchFallback) === 'ReviewEngine.java',
+    'design sketch file name follows its public type',
+    `got ${javaFileNameFor(publicSketch, sketchFallback)}`,
+  );
+  await checkCompiles('design sketch with a differently named public type compiles', {
+    source: publicSketch,
+    fileName: javaFileNameFor(publicSketch, sketchFallback),
+    testSupport: '',
+    tests: [],
+  });
+  record(
+    javaFileNameFor('class Helper {\n}\n', sketchFallback) === sketchFallback,
+    'package-private sketch keeps the scenario file name',
+    `got ${javaFileNameFor('class Helper {\n}\n', sketchFallback)}`,
+  );
+  record(
+    !hasJavaTypeDeclaration('record every decision in an audit log') &&
+      !hasJavaTypeDeclaration('interface between the dispatcher and channel'),
+    'design notes are not mistaken for a class sketch',
+  );
+  record(
+    hasJavaTypeDeclaration('@FunctionalInterface interface Rule { int apply(int value); }'),
+    'annotated interface declaration is recognised as a class sketch',
+  );
 
   const scenarios = loadScenarios({ refresh: true });
   record(scenarios.length >= 12, `scenario count: ${scenarios.length} (need at least 12)`);

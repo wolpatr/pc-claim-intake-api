@@ -22,6 +22,11 @@ Run the tests with `./mvnw test` (`mvnw.cmd test` on Windows). Java 17 or newer 
 
 REST endpoints, persistence, and CI are later steps in the plan.
 
+## Study quiz
+
+A separate offline quiz for self-testing this project and the study plan lives in
+[`quiz/`](quiz/README.md). Open `quiz/index.html` in a browser; it needs no build or server.
+
 ## Stack
 
 - Java

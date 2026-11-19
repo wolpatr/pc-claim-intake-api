@@ -323,6 +323,9 @@
 
   function renderQuiz() {
     state.screen = "quiz";
+    document.title =
+      (state.mode === "practice" ? "Practice" : "Scored round") +
+      " · Claim Intake Study Quiz";
     app.replaceChildren();
     live.textContent = "";
 

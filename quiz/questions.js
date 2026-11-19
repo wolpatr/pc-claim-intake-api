@@ -106,14 +106,14 @@
       prompt:
         "According to the user stories, which fields are required for a claim to be accepted?",
       options: [
-        "Claimant name, policy number, date of loss, and loss description",
+        "Claimant name, claimant email, policy number, date of loss, claim type, loss description, and amount",
         "Policy number and claim amount",
         "Claimant name and email address",
         "Incident date and insurance agent ID"
       ],
       answer: 0,
       explanation:
-        "The four required fields are claimant name, policy number, date of loss, and loss description. Missing or blank values cause a validation error."
+        "All seven fields are required: claimant name, claimant email, policy number, date of loss, claim type, loss description, and amount. Missing or blank values cause a validation error."
     },
     {
       id: "project-06",
@@ -239,7 +239,7 @@
       ],
       answer: 3,
       explanation:
-        "A claim carries a policy number, claimant details, incident date, claim type, description, amount, and status. The required-field rules focus on claimant name, policy number, date of loss, and description."
+        "A claim carries a policy number, claimant details, incident date, claim type, description, amount, and status. The required fields are claimant name, claimant email, policy number, date of loss, claim type, loss description, and amount."
     },
     {
       id: "project-15",

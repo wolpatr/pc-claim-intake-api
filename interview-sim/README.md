@@ -36,7 +36,7 @@ Detection runs in this order:
    - JetBrains `jbr` directories under `Program Files\JetBrains`, `%LOCALAPPDATA%\JetBrains`, and the Toolbox apps directory
    - Eclipse Adoptium installations under `Program Files`, `Program Files (x86)`, and `%LOCALAPPDATA%\Programs`, and Java installations under `Program Files` and `%LOCALAPPDATA%\Programs`
 
-The detected version is printed in the top bar. If no JDK is found, the setup screen shows install instructions and refuses to start a session. The simulator never installs software.
+The detected version is printed in the top bar. If no JDK is found, the setup screen shows install instructions; coding and debugging rounds cannot start until one is installed, while design rounds can still run. The simulator never installs software.
 
 Exact install instructions:
 
@@ -85,7 +85,7 @@ Privacy note: when AI is enabled, the clarifying question, the current editor co
 
 ## Scenarios
 
-Twelve scenarios ship under `interview-sim/scenarios/`, across Associate, Intermediate, and Senior difficulty:
+Twelve scenarios ship under `interview-sim/scenarios/`, across Associate, Intermediate, Senior, and Consultant difficulty:
 
 | Scenario | Type | Area | Base round | Follow-up |
 | --- | --- | --- | --- | --- |
@@ -159,7 +159,7 @@ Run the validator before reporting a scenario as done:
 node interview-sim/validate.mjs
 ```
 
-It checks the schema per round type, unique ids, non-empty rubrics and weights, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, the required scenario mix (at least 12 scenarios, 2 debugging and 2 design), that every code starter compiles and fails before completion, that each debugging regression test fails on the broken starter, that every reference solution passes both hidden suites, and that each design criterion's strong answer and reference design clear its own evidence threshold.
+It checks the schema per round type, unique ids, non-empty rubrics and weights, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, the required scenario mix (at least 12 scenarios, 2 debugging and 2 design), that every code starter compiles and fails before completion, that each debugging regression test fails on the broken starter, that every reference solution passes both hidden suites, and that each design criterion's strong answer and reference design, plus each debugging diagnosis's strong answer, clear their evidence thresholds.
 
 ## Progress and history
 
@@ -187,6 +187,7 @@ interview-sim/
   public/
     index.html          single-page UI
     app.js              session flow, timer, chat, scoring
+    scoring.mjs         keyword evidence helpers shared by app.js and validate.mjs
     styles.css          local styling, no external assets
   scenarios/            twelve scenario definitions across three round types
   progress/             gitignored local session records

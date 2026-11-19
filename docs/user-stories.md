@@ -41,7 +41,7 @@ This is a practice project. All claims are mock data: records live in memory onl
 
 ### Acceptance criteria
 
-- **Given** a claim recorded with a known claim ID, **when** I retrieve the claim by that ID, **then** the system returns the full claim record: claim ID, claimant name, policy number, date of loss, loss description, and status.
+- **Given** a claim recorded with a known claim ID, **when** I retrieve the claim by that ID, **then** the system returns the full claim record: claim ID, claimant name, claimant email, claimant phone, policy number, date of loss, claim type, loss description, amount, and status.
 - **Given** a claim ID that was never recorded, **when** I retrieve a claim by that ID, **then** the system returns a not-found error rather than an empty or partial claim.
 - **Given** more than one recorded claim, **when** I retrieve a claim by one ID, **then** the system returns exactly that claim and not another claim's details.
 
@@ -54,4 +54,4 @@ This is a practice project. All claims are mock data: records live in memory onl
 - **Given** a recorded claim, **when** I update its status to a valid status (`OPEN`, `IN_REVIEW`, or `CLOSED`), **then** the system stores the new status and returns the updated claim showing it.
 - **Given** a status value that is not `OPEN`, `IN_REVIEW`, or `CLOSED`, **when** I update a claim's status with it, **then** the system rejects the update with a validation error.
 - **Given** a claim ID that was never recorded, **when** I update a claim's status by that ID, **then** the system returns a not-found error.
-- **Given** a successful status update, **when** the update is applied, **then** the claim's other details (claimant name, policy number, date of loss, loss description) remain unchanged.
+- **Given** a successful status update, **when** the update is applied, **then** the claim's other details (claimant name, claimant email, claimant phone, policy number, date of loss, claim type, loss description, and amount) remain unchanged.

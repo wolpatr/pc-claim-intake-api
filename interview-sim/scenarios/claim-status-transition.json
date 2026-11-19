@@ -1,0 +1,258 @@
+{
+  "id": "claim-status-transition",
+  "title": "Claim status transitions with an audit note",
+  "tagline": "Implement the allowed status moves for a claim, then add an audit-note change request.",
+  "difficulty": "Associate",
+  "topics": [
+    "Claim domain",
+    "Enums",
+    "Control flow",
+    "Java"
+  ],
+  "phaseTimes": {
+    "brief": 5,
+    "implement": 25,
+    "test": 10,
+    "change": 10,
+    "debrief": 10
+  },
+  "intro": "Hi, thanks for making the time. I am the consultant developer on the claim intake team. Today we will work in the claim domain: a claim moves through OPEN, IN_REVIEW, and CLOSED, and I want a small pure Java helper that owns those transitions. Ask me anything before you start.",
+  "clarifyingQuestions": [
+    {
+      "id": "rules",
+      "topic": "Allowed transitions",
+      "question": "Which status transitions are allowed?",
+      "keywords": [
+        "transition",
+        "allowed",
+        "rules",
+        "status",
+        "move",
+        "open",
+        "review",
+        "closed"
+      ],
+      "answer": "Requesting the same status is an idempotent no-op. OPEN may only move to IN_REVIEW. IN_REVIEW may move to OPEN or CLOSED. CLOSED is terminal, so it cannot move to a different status.",
+      "coach": "Ask which moves are legal before writing the switch or if-chain."
+    },
+    {
+      "id": "errors",
+      "topic": "Failure behaviour",
+      "question": "What should happen when a transition is not allowed?",
+      "keywords": [
+        "invalid",
+        "illegal",
+        "error",
+        "exception",
+        "throw",
+        "reject",
+        "fail"
+      ],
+      "answer": "Throw IllegalStateException, and include both the current and target status in the message so the caller can log a useful audit line. A null argument should throw NullPointerException.",
+      "coach": "Ask how invalid moves fail, and whether the error message must name the statuses."
+    },
+    {
+      "id": "same",
+      "topic": "Repeated status",
+      "question": "Is setting the same status again allowed?",
+      "keywords": [
+        "same",
+        "idempotent",
+        "no-op",
+        "noop",
+        "repeat",
+        "again"
+      ],
+      "answer": "Treat it as a no-op and return the same status. Do not throw, because retries from a client should be harmless.",
+      "coach": "Ask about idempotency and repeated requests."
+    },
+    {
+      "id": "scope",
+      "topic": "Scope and side effects",
+      "question": "Should this touch persistence, threads, or an audit log?",
+      "keywords": [
+        "database",
+        "persistence",
+        "repository",
+        "thread",
+        "concurrency",
+        "audit",
+        "log",
+        "io"
+      ],
+      "answer": "No. For this round keep it a pure in-memory function. No repository, no threads, no logging. The change request will add a small audit object, but still without persistence.",
+      "coach": "Ask whether the helper is pure or whether it should persist or log anything."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "Will there be a follow-up change?",
+      "keywords": [
+        "change",
+        "follow-up",
+        "change request",
+        "extension",
+        "next"
+      ],
+      "answer": "Yes. After the first round I will add a change request around audit metadata and reopening rules. Design the base so that extension is not painful.",
+      "coach": "Ask whether a change request is coming and what kind of extension to expect."
+    }
+  ],
+  "clarifyingFallback": "For this round, assume the helper is a pure in-memory Java utility. If a detail is not specified, choose the simplest rule, say the assumption out loud, and keep the change request in mind.",
+  "problemStatement": "### Context\n\nYou are working on the claim intake API. A claim has three statuses: OPEN, IN_REVIEW, and CLOSED.\n\n### Your task\n\nImplement ClaimStatusMachine with two static methods:\n\n1. canTransition(current, target) returns true when the move is allowed.\n2. transition(current, target) returns the target status when the move is allowed.\n\n### Rules\n\n- Requesting the same status is an allowed no-op.\n- OPEN may move only to IN_REVIEW.\n- IN_REVIEW may move to OPEN (reopened) or CLOSED.\n- CLOSED is terminal and cannot move to a different status.\n- Null arguments throw NullPointerException.\n- An illegal move throws IllegalStateException whose message names both statuses.\n\n### Visible examples\n\n- OPEN to IN_REVIEW: allowed, returns IN_REVIEW.\n- IN_REVIEW to OPEN: allowed, returns OPEN.\n- OPEN to CLOSED: rejected with IllegalStateException.\n- CLOSED to OPEN: rejected with IllegalStateException.\n- OPEN to OPEN: allowed no-op.\n\n### Notes\n\n- Keep the class in the default package and in the starter file.\n- The hidden tests call the static methods directly.",
+  "fileName": "ClaimStatusMachine.java",
+  "starterCode": "import java.util.Objects;\n\npublic final class ClaimStatusMachine {\n\n    public enum Status {\n        OPEN,\n        IN_REVIEW,\n        CLOSED\n    }\n\n    private ClaimStatusMachine() {\n    }\n\n    public static boolean canTransition(Status current, Status target) {\n        Objects.requireNonNull(current, \"current\");\n        Objects.requireNonNull(target, \"target\");\n        // TODO: same status is a no-op; CLOSED is terminal;\n        // OPEN may only move to IN_REVIEW; IN_REVIEW may move to OPEN or CLOSED.\n        return false;\n    }\n\n    public static Status transition(Status current, Status target) {\n        Objects.requireNonNull(current, \"current\");\n        Objects.requireNonNull(target, \"target\");\n        // TODO: return target when the move is allowed. Otherwise throw IllegalStateException\n        // whose message contains both status names.\n        return target;\n    }\n}\n",
+  "examples": [
+    {
+      "input": "canTransition(OPEN, IN_REVIEW)",
+      "output": "true"
+    },
+    {
+      "input": "transition(OPEN, CLOSED)",
+      "output": "IllegalStateException naming OPEN and CLOSED"
+    },
+    {
+      "input": "transition(OPEN, OPEN)",
+      "output": "OPEN (no-op)"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "same status is an allowed no-op",
+      "className": "TransitionSameStatusTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class TransitionSameStatusTest {\n    public static void main(String[] args) {\n        var open = ClaimStatusMachine.Status.OPEN;\n        var closed = ClaimStatusMachine.Status.CLOSED;\n        TestSupport.check(ClaimStatusMachine.canTransition(open, open), \"OPEN -> OPEN must be allowed\");\n        TestSupport.eq(open, ClaimStatusMachine.transition(open, open), \"same status returns the current status\");\n        TestSupport.check(ClaimStatusMachine.canTransition(closed, closed), \"CLOSED -> CLOSED is a no-op\");\n        System.out.println(\"PASS: same status is an allowed no-op\");\n    }\n}\n"
+    },
+    {
+      "name": "OPEN moves to IN_REVIEW",
+      "className": "OpenToReviewTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class OpenToReviewTest {\n    public static void main(String[] args) {\n        var open = ClaimStatusMachine.Status.OPEN;\n        var review = ClaimStatusMachine.Status.IN_REVIEW;\n        TestSupport.check(ClaimStatusMachine.canTransition(open, review), \"OPEN -> IN_REVIEW must be allowed\");\n        TestSupport.eq(review, ClaimStatusMachine.transition(open, review), \"transition returns IN_REVIEW\");\n        System.out.println(\"PASS: OPEN moves to IN_REVIEW\");\n    }\n}\n"
+    },
+    {
+      "name": "IN_REVIEW moves to CLOSED",
+      "className": "ReviewToClosedTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ReviewToClosedTest {\n    public static void main(String[] args) {\n        var review = ClaimStatusMachine.Status.IN_REVIEW;\n        var closed = ClaimStatusMachine.Status.CLOSED;\n        TestSupport.check(ClaimStatusMachine.canTransition(review, closed), \"IN_REVIEW -> CLOSED must be allowed\");\n        TestSupport.eq(closed, ClaimStatusMachine.transition(review, closed), \"transition returns CLOSED\");\n        System.out.println(\"PASS: IN_REVIEW moves to CLOSED\");\n    }\n}\n"
+    },
+    {
+      "name": "IN_REVIEW can reopen to OPEN",
+      "className": "ReopenTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ReopenTest {\n    public static void main(String[] args) {\n        var review = ClaimStatusMachine.Status.IN_REVIEW;\n        var open = ClaimStatusMachine.Status.OPEN;\n        TestSupport.check(ClaimStatusMachine.canTransition(review, open), \"IN_REVIEW -> OPEN must be allowed\");\n        TestSupport.eq(open, ClaimStatusMachine.transition(review, open), \"transition returns OPEN\");\n        System.out.println(\"PASS: IN_REVIEW can reopen to OPEN\");\n    }\n}\n"
+    },
+    {
+      "name": "CLOSED is terminal",
+      "className": "ClosedIsTerminalTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ClosedIsTerminalTest {\n    public static void main(String[] args) {\n        var closed = ClaimStatusMachine.Status.CLOSED;\n        var open = ClaimStatusMachine.Status.OPEN;\n        TestSupport.check(!ClaimStatusMachine.canTransition(closed, open), \"CLOSED -> OPEN must be denied\");\n        TestSupport.throwsType(IllegalStateException.class,\n                () -> ClaimStatusMachine.transition(closed, open),\n                \"CLOSED -> OPEN must throw IllegalStateException\");\n        System.out.println(\"PASS: CLOSED is terminal\");\n    }\n}\n"
+    },
+    {
+      "name": "OPEN cannot jump straight to CLOSED",
+      "className": "OpenCannotCloseTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class OpenCannotCloseTest {\n    public static void main(String[] args) {\n        var open = ClaimStatusMachine.Status.OPEN;\n        var closed = ClaimStatusMachine.Status.CLOSED;\n        TestSupport.check(!ClaimStatusMachine.canTransition(open, closed), \"OPEN -> CLOSED must be denied\");\n        TestSupport.throwsType(IllegalStateException.class,\n                () -> ClaimStatusMachine.transition(open, closed),\n                \"OPEN -> CLOSED must throw IllegalStateException\");\n        System.out.println(\"PASS: OPEN cannot jump straight to CLOSED\");\n    }\n}\n"
+    },
+    {
+      "name": "illegal transition message names both statuses",
+      "className": "InvalidTransitionMessageTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class InvalidTransitionMessageTest {\n    public static void main(String[] args) {\n        var open = ClaimStatusMachine.Status.OPEN;\n        var closed = ClaimStatusMachine.Status.CLOSED;\n        var error = TestSupport.throwsType(IllegalStateException.class,\n                () -> ClaimStatusMachine.transition(open, closed),\n                \"OPEN -> CLOSED must throw\");\n        String message = error.getMessage() == null ? \"\" : error.getMessage();\n        TestSupport.check(message.contains(\"OPEN\"), \"message must mention OPEN, was: \" + message);\n        TestSupport.check(message.contains(\"CLOSED\"), \"message must mention CLOSED, was: \" + message);\n        System.out.println(\"PASS: illegal transition message names both statuses\");\n    }\n}\n"
+    },
+    {
+      "name": "null statuses are rejected",
+      "className": "NullArgumentsTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class NullArgumentsTest {\n    public static void main(String[] args) {\n        var open = ClaimStatusMachine.Status.OPEN;\n        TestSupport.throwsType(NullPointerException.class,\n                () -> ClaimStatusMachine.transition(null, open),\n                \"null current status must throw NullPointerException\");\n        TestSupport.throwsType(NullPointerException.class,\n                () -> ClaimStatusMachine.canTransition(open, null),\n                \"null target status must throw NullPointerException\");\n        System.out.println(\"PASS: null statuses are rejected\");\n    }\n}\n"
+    }
+  ],
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 5,
+      "phase": "implement",
+      "text": "Before you write the branches, tell me which transitions you are rejecting and why."
+    },
+    {
+      "atMinute": 15,
+      "phase": "implement",
+      "text": "What should happen if the same status is requested twice? Is that a transition or a no-op?"
+    }
+  ],
+  "fallbackProbe": "Which part of the state machine is easiest to get wrong, and how would you prove it with a test?",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me the questions you would ask a real interviewer. When you are ready, tell me your plan and start the clock.",
+    "implement": "The implementation timer is running. Talk through your approach as you code, and tell me when you want to run the tests.",
+    "test": "Run the tests. Read the first failure carefully, say what you think caused it, then fix it.",
+    "change": "Here is the change request. Treat it as new scope from the interviewer, not as a rewrite of everything you have done.",
+    "debrief": "Time is up. Let us review what happened: the tests, the rubric, your questions, and the hints you used."
+  },
+  "hints": [
+    "Start by listing the legal pairs on paper. There are only three statuses, so a small if-chain or switch is enough.",
+    "Handle the same-status no-op before the terminal-status check. Then let OPEN only target IN_REVIEW and let IN_REVIEW target OPEN or CLOSED.",
+    "The illegal path should throw new IllegalStateException with a message built from both enum values. Reuse canTransition from transition so the rules live in one place."
+  ],
+  "changeRequest": {
+    "prompt": "Add audit metadata and a reopening rule.",
+    "statement": "### Change request\n\nThe claims team now needs an audit-friendly overload.\n\nAdd a record named Transition with three components: from, to, and note. Add an overload:\n\ntransition(current, target, note)\n\nRequirements:\n\n- Validate the move with the existing transition(current, target) rules.\n- If the target is OPEN, the note is mandatory and must not be blank after trimming. Otherwise throw IllegalArgumentException.\n- For any other target, a null note is allowed and becomes an empty string.\n- Return the note trimmed, never null.\n- Illegal moves must still throw IllegalStateException.\n\nKeep the original two-argument method working exactly as before.",
+    "starterCode": "import java.util.Objects;\n\npublic final class ClaimStatusMachine {\n\n    public enum Status {\n        OPEN,\n        IN_REVIEW,\n        CLOSED\n    }\n\n    public record Transition(Status from, Status to, String note) {\n    }\n\n    private ClaimStatusMachine() {\n    }\n\n    public static boolean canTransition(Status current, Status target) {\n        Objects.requireNonNull(current, \"current\");\n        Objects.requireNonNull(target, \"target\");\n        if (current == target) {\n            return true;\n        }\n        if (current == Status.CLOSED) {\n            return false;\n        }\n        if (current == Status.OPEN) {\n            return target == Status.IN_REVIEW;\n        }\n        return target == Status.OPEN || target == Status.CLOSED;\n    }\n\n    public static Status transition(Status current, Status target) {\n        Objects.requireNonNull(current, \"current\");\n        Objects.requireNonNull(target, \"target\");\n        if (!canTransition(current, target)) {\n            throw new IllegalStateException(\n                    \"Illegal claim status transition: \" + current + \" -> \" + target);\n        }\n        return target;\n    }\n\n    public static Transition transition(Status current, Status target, String note) {\n        Objects.requireNonNull(current, \"current\");\n        Objects.requireNonNull(target, \"target\");\n        // TODO: validate the move with transition(current, target). A reopen to OPEN requires a\n        // non-blank note. Trim the note, use an empty string when no note is given, and return\n        // a Transition record.\n        return new Transition(current, target, note == null ? \"\" : note);\n    }\n}\n",
+    "fileName": "ClaimStatusMachine.java",
+    "hiddenTests": [
+      {
+        "name": "reopening requires a non-blank note",
+        "className": "ReopenRequiresNoteTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ReopenRequiresNoteTest {\n    public static void main(String[] args) {\n        var review = ClaimStatusMachine.Status.IN_REVIEW;\n        var open = ClaimStatusMachine.Status.OPEN;\n        TestSupport.throwsType(IllegalArgumentException.class,\n                () -> ClaimStatusMachine.transition(review, open, \"   \"),\n                \"a blank reopen note must be rejected\");\n        TestSupport.throwsType(IllegalArgumentException.class,\n                () -> ClaimStatusMachine.transition(review, open, null),\n                \"a null reopen note must be rejected\");\n        System.out.println(\"PASS: reopening requires a non-blank note\");\n    }\n}\n"
+      },
+      {
+        "name": "reopen returns a Transition record with a trimmed note",
+        "className": "ReopenNoteRecordTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ReopenNoteRecordTest {\n    public static void main(String[] args) {\n        var review = ClaimStatusMachine.Status.IN_REVIEW;\n        var open = ClaimStatusMachine.Status.OPEN;\n        var transition = ClaimStatusMachine.transition(review, open, \"  new damage evidence  \");\n        TestSupport.eq(review, transition.from(), \"record from status\");\n        TestSupport.eq(open, transition.to(), \"record to status\");\n        TestSupport.eq(\"new damage evidence\", transition.note(), \"record note must be trimmed\");\n        System.out.println(\"PASS: reopen returns a Transition record with a trimmed note\");\n    }\n}\n"
+      },
+      {
+        "name": "closing accepts a blank or null note",
+        "className": "CloseNoteOptionalTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class CloseNoteOptionalTest {\n    public static void main(String[] args) {\n        var review = ClaimStatusMachine.Status.IN_REVIEW;\n        var closed = ClaimStatusMachine.Status.CLOSED;\n        var withBlank = ClaimStatusMachine.transition(review, closed, \"   \");\n        TestSupport.eq(closed, withBlank.to(), \"blank note close target\");\n        TestSupport.eq(\"\", withBlank.note(), \"blank note is stored as empty string\");\n        var withNull = ClaimStatusMachine.transition(review, closed, null);\n        TestSupport.eq(\"\", withNull.note(), \"null note is stored as empty string\");\n        System.out.println(\"PASS: closing accepts a blank or null note\");\n    }\n}\n"
+      },
+      {
+        "name": "an invalid move still throws even with a note",
+        "className": "InvalidTransitionWithNoteTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class InvalidTransitionWithNoteTest {\n    public static void main(String[] args) {\n        var closed = ClaimStatusMachine.Status.CLOSED;\n        var open = ClaimStatusMachine.Status.OPEN;\n        TestSupport.throwsType(IllegalStateException.class,\n                () -> ClaimStatusMachine.transition(closed, open, \"please reopen\"),\n                \"CLOSED -> OPEN must throw even when a note is supplied\");\n        System.out.println(\"PASS: an invalid move still throws even with a note\");\n    }\n}\n"
+      },
+      {
+        "name": "null target with a note is rejected",
+        "className": "NullTargetWithNoteTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class NullTargetWithNoteTest {\n    public static void main(String[] args) {\n        var review = ClaimStatusMachine.Status.IN_REVIEW;\n        TestSupport.throwsType(NullPointerException.class,\n                () -> ClaimStatusMachine.transition(review, null, \"note\"),\n                \"null target must throw NullPointerException\");\n        System.out.println(\"PASS: null target with a note is rejected\");\n    }\n}\n"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 30,
+      "criterion": "Base transition rules pass the hidden suite",
+      "strongAnswer": "All base tests pass: same-status no-op, allowed moves, terminal CLOSED, and clear failures for illegal moves."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "Audit-note change request passes the hidden suite",
+      "strongAnswer": "The overload returns a trimmed Transition record, requires a note only for reopening, and preserves the base rules."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Clarified the rules before coding",
+      "strongAnswer": "Asked about allowed moves, failure behaviour, idempotency, and scope before committing to an implementation."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Worked independently",
+      "strongAnswer": "Reached a correct design with no hints, or used one hint only after a genuine attempt."
+    },
+    {
+      "id": "efficiency",
+      "type": "efficiency",
+      "weight": 10,
+      "criterion": "Worked within the phase budget",
+      "strongAnswer": "Finished implementation, testing, and the change request inside the time budget without rushing the tests."
+    }
+  ],
+  "referenceSolution": "import java.util.Objects;\n\npublic final class ClaimStatusMachine {\n\n    public enum Status {\n        OPEN,\n        IN_REVIEW,\n        CLOSED\n    }\n\n    public record Transition(Status from, Status to, String note) {\n    }\n\n    private ClaimStatusMachine() {\n    }\n\n    public static boolean canTransition(Status current, Status target) {\n        Objects.requireNonNull(current, \"current\");\n        Objects.requireNonNull(target, \"target\");\n        if (current == target) {\n            return true;\n        }\n        if (current == Status.CLOSED) {\n            return false;\n        }\n        if (current == Status.OPEN) {\n            return target == Status.IN_REVIEW;\n        }\n        return target == Status.OPEN || target == Status.CLOSED;\n    }\n\n    public static Status transition(Status current, Status target) {\n        Objects.requireNonNull(current, \"current\");\n        Objects.requireNonNull(target, \"target\");\n        if (!canTransition(current, target)) {\n            throw new IllegalStateException(\n                    \"Illegal claim status transition: \" + current + \" -> \" + target);\n        }\n        return target;\n    }\n\n    public static Transition transition(Status current, Status target, String note) {\n        Objects.requireNonNull(current, \"current\");\n        Objects.requireNonNull(target, \"target\");\n        transition(current, target);\n        String cleaned = note == null ? \"\" : note.trim();\n        if (target == Status.OPEN && cleaned.isEmpty()) {\n            throw new IllegalArgumentException(\"A note is required when reopening a claim.\");\n        }\n        return new Transition(current, target, cleaned);\n    }\n}\n"
+}

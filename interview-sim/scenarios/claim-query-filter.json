@@ -1,0 +1,256 @@
+{
+  "id": "claim-query-filter",
+  "title": "Fix the claim search filter",
+  "tagline": "Debug a filtering method that returns the wrong rows, then add a summary view.",
+  "difficulty": "Associate",
+  "topics": [
+    "Claim domain",
+    "Debugging",
+    "Collections",
+    "Sorting",
+    "Java"
+  ],
+  "phaseTimes": {
+    "brief": 5,
+    "implement": 25,
+    "test": 10,
+    "change": 10,
+    "debrief": 10
+  },
+  "intro": "This round is a bug fix. Another developer wrote ClaimQuery.filter for the claim search screen, and support tickets say it drops valid claims and returns rows in the wrong order. Read the code, reproduce the bugs, then fix them. Ask me anything.",
+  "clarifyingQuestions": [
+    {
+      "id": "symptoms",
+      "topic": "Reported symptoms",
+      "question": "What are the reported symptoms?",
+      "keywords": [
+        "symptom",
+        "ticket",
+        "bug",
+        "wrong",
+        "support",
+        "broken",
+        "drop"
+      ],
+      "answer": "Three complaints: a claim with amount exactly equal to the minimum is missing, date bounds appear to exclude the boundary days, and results are not sorted. There are also crashes when a claim has a null amount or null incident date.",
+      "coach": "Ask what users actually observe before reading the implementation."
+    },
+    {
+      "id": "expected",
+      "topic": "Expected filter semantics",
+      "question": "What is the expected behaviour for status, amount, and dates?",
+      "keywords": [
+        "status",
+        "any",
+        "amount",
+        "minimum",
+        "inclusive",
+        "date",
+        "range",
+        "expected"
+      ],
+      "answer": "Status null, blank, or ANY means no status filter; otherwise match case-insensitively after trimming. Minimum amount is inclusive. Date bounds are inclusive. Null claims are skipped.",
+      "coach": "Ask for the exact filter semantics, especially inclusive boundaries and the ANY sentinel."
+    },
+    {
+      "id": "sort",
+      "topic": "Sort order",
+      "question": "How should the results be sorted?",
+      "keywords": [
+        "sort",
+        "order",
+        "date",
+        "newest",
+        "id",
+        "tie"
+      ],
+      "answer": "Incident date descending, newest first. Claims with the same date sort by id ascending. Claims with no incident date go last, also by id ascending.",
+      "coach": "Ask about sorting and tie-breakers before writing a comparator."
+    },
+    {
+      "id": "nulls",
+      "topic": "Null handling",
+      "question": "What should happen with null amounts, dates, and claims?",
+      "keywords": [
+        "null",
+        "missing",
+        "empty",
+        "npe",
+        "skip"
+      ],
+      "answer": "A null list returns an empty list. Null entries are skipped. A null amount or date is included when there is no filter on that field, and excluded when a filter is active. Never throw NullPointerException from this method.",
+      "coach": "Ask how null fields behave with and without filters."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "Is there more work after the fix?",
+      "keywords": [
+        "change",
+        "follow-up",
+        "summary",
+        "total",
+        "next"
+      ],
+      "answer": "Yes. After the fix I want a summarize method for the search header: count, total amount, maximum amount, and counts by status.",
+      "coach": "Ask whether a follow-up feature is planned so you keep the class extensible."
+    }
+  ],
+  "clarifyingFallback": "Assume the filter is meant for a support search screen. Prefer inclusive bounds, null safety, and deterministic ordering. Say any assumption out loud.",
+  "problemStatement": "### Context\n\nClaimQuery.filter powers the claim search screen. The starter implementation compiles but is wrong.\n\n### Your task\n\nFix filter so it meets the specification below. Do not rewrite the public API.\n\n### Specification\n\n- A null input list returns an empty list.\n- Null entries in the list are skipped.\n- Status filter: null, blank, or ANY (case-insensitive, trimmed) means no status filter. Otherwise match the claim status case-insensitively after trimming. Claims with a null status are excluded when a status filter is active.\n- Minimum amount: inclusive. Claims with a null amount are excluded when a minimum is supplied.\n- Date range: from and to are inclusive. Null bounds are open. Claims with a null incident date are excluded when a date bound is active.\n- With no filters, claims with null amounts or null dates are still returned.\n- Sort by incident date descending, then id ascending. Null incident dates go last, also by id ascending.\n\n### Visible examples\n\n- Amount 100 with minimum 100: included.\n- from = 2026-01-01 and to = 2026-01-31: both boundary dates included.\n- status = ANY: every non-null claim included.\n- Two claims on the same date: ids A and B sort A then B.\n\n### Notes\n\n- Keep the nested Claim record and the method signature.\n- The hidden tests include the boundary cases from the support tickets.",
+  "fileName": "ClaimQuery.java",
+  "starterCode": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.ArrayList;\nimport java.util.List;\n\npublic final class ClaimQuery {\n\n    public record Claim(String id, String policyNumber, String status, BigDecimal amount, LocalDate incidentDate) {\n    }\n\n    private ClaimQuery() {\n    }\n\n    public static List<Claim> filter(List<Claim> claims, String status, BigDecimal minAmount, LocalDate from, LocalDate to) {\n        if (claims == null) {\n            return List.of();\n        }\n        List<Claim> result = new ArrayList<>();\n        for (Claim claim : claims) {\n            if (claim == null) {\n                continue;\n            }\n            if (status != null && !claim.status().equalsIgnoreCase(status)) {\n                continue;\n            }\n            if (minAmount != null && claim.amount().compareTo(minAmount) <= 0) {\n                continue;\n            }\n            if (from != null && claim.incidentDate().isBefore(from)) {\n                continue;\n            }\n            if (to != null && claim.incidentDate().isAfter(to)) {\n                continue;\n            }\n            result.add(claim);\n        }\n        return result;\n    }\n}\n",
+  "examples": [
+    {
+      "input": "filter(claims, \"ANY\", 100, null, null)",
+      "output": "claims with amount >= 100, newest first"
+    },
+    {
+      "input": "filter(null, ...)",
+      "output": "[]"
+    },
+    {
+      "input": "claim with null amount, no filters",
+      "output": "claim is returned"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "a null list yields an empty result",
+      "className": "NullListTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class NullListTest {\n    public static void main(String[] args) {\n        TestSupport.eq(List.of(), ClaimQuery.filter(null, null, null, null, null), \"null input list\");\n        System.out.println(\"PASS: a null list yields an empty result\");\n    }\n}\n"
+    },
+    {
+      "name": "status matching trims and ignores case",
+      "className": "StatusFilterTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class StatusFilterTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 5, 20);\n        var claims = List.of(\n                new ClaimQuery.Claim(\"C-1\", \"AB-123456\", \" open \", new BigDecimal(\"100\"), date),\n                new ClaimQuery.Claim(\"C-2\", \"AB-123456\", \"CLOSED\", new BigDecimal(\"100\"), date));\n        var result = ClaimQuery.filter(claims, \" OPEN \", null, null, null);\n        TestSupport.eq(1, result.size(), \"one OPEN claim should match: \" + result);\n        TestSupport.eq(\"C-1\", result.get(0).id(), \"matched claim id\");\n        System.out.println(\"PASS: status matching trims and ignores case\");\n    }\n}\n"
+    },
+    {
+      "name": "null, blank, and ANY mean no status filter",
+      "className": "AnyStatusTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class AnyStatusTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 5, 20);\n        var claims = List.of(\n                new ClaimQuery.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\"), date),\n                new ClaimQuery.Claim(\"C-2\", \"AB-123456\", \"CLOSED\", new BigDecimal(\"100\"), date));\n        TestSupport.eq(2, ClaimQuery.filter(claims, \"ANY\", null, null, null).size(), \"ANY sentinel\");\n        TestSupport.eq(2, ClaimQuery.filter(claims, \"\", null, null, null).size(), \"blank status\");\n        TestSupport.eq(2, ClaimQuery.filter(claims, null, null, null, null).size(), \"null status\");\n        System.out.println(\"PASS: null, blank, and ANY mean no status filter\");\n    }\n}\n"
+    },
+    {
+      "name": "minimum amount is inclusive",
+      "className": "MinAmountInclusiveTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class MinAmountInclusiveTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 5, 20);\n        var claims = List.of(\n                new ClaimQuery.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100.00\"), date),\n                new ClaimQuery.Claim(\"C-2\", \"AB-123456\", \"OPEN\", new BigDecimal(\"99.99\"), date));\n        var result = ClaimQuery.filter(claims, null, new BigDecimal(\"100\"), null, null);\n        TestSupport.eq(1, result.size(), \"only the equal amount should pass: \" + result);\n        TestSupport.eq(\"C-1\", result.get(0).id(), \"inclusive amount id\");\n        System.out.println(\"PASS: minimum amount is inclusive\");\n    }\n}\n"
+    },
+    {
+      "name": "date bounds are inclusive",
+      "className": "DateRangeInclusiveTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class DateRangeInclusiveTest {\n    public static void main(String[] args) {\n        var from = LocalDate.of(2026, 1, 1);\n        var to = LocalDate.of(2026, 1, 31);\n        var claims = List.of(\n                new ClaimQuery.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\"), from),\n                new ClaimQuery.Claim(\"C-2\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\"), to),\n                new ClaimQuery.Claim(\"C-3\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\"), from.minusDays(1)),\n                new ClaimQuery.Claim(\"C-4\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\"), to.plusDays(1)));\n        var result = ClaimQuery.filter(claims, null, null, from, to);\n        TestSupport.eq(2, result.size(), \"only the two boundary dates should pass: \" + result);\n        System.out.println(\"PASS: date bounds are inclusive\");\n    }\n}\n"
+    },
+    {
+      "name": "results are newest first then id ascending",
+      "className": "SortOrderTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class SortOrderTest {\n    public static void main(String[] args) {\n        var newer = LocalDate.of(2026, 5, 20);\n        var older = LocalDate.of(2026, 5, 10);\n        var claims = List.of(\n                new ClaimQuery.Claim(\"C-9\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\"), older),\n                new ClaimQuery.Claim(\"B\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\"), newer),\n                new ClaimQuery.Claim(\"A\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\"), newer),\n                new ClaimQuery.Claim(\"C-0\", \"AB-123456\", \"OPEN\", new BigDecimal(\"100\"), null));\n        var result = ClaimQuery.filter(claims, null, null, null, null);\n        var ids = result.stream().map(ClaimQuery.Claim::id).toList();\n        TestSupport.eq(List.of(\"A\", \"B\", \"C-9\", \"C-0\"), ids, \"sort order\");\n        System.out.println(\"PASS: results are newest first then id ascending\");\n    }\n}\n"
+    },
+    {
+      "name": "null claims are skipped but null fields pass without filters",
+      "className": "NullsWithoutFiltersTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class NullsWithoutFiltersTest {\n    public static void main(String[] args) {\n        var claims = java.util.Arrays.asList(\n                null,\n                new ClaimQuery.Claim(\"C-1\", \"AB-123456\", \"OPEN\", null, null));\n        var result = ClaimQuery.filter(claims, null, null, null, null);\n        TestSupport.eq(1, result.size(), \"null claim must be skipped, null fields kept\");\n        TestSupport.eq(\"C-1\", result.get(0).id(), \"kept claim id\");\n        System.out.println(\"PASS: null claims are skipped but null fields pass without filters\");\n    }\n}\n"
+    },
+    {
+      "name": "claims with null filtered fields are excluded",
+      "className": "FilteredNullsExcludedTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class FilteredNullsExcludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(new ClaimQuery.Claim(\"C-1\", \"AB-123456\", null, null, null));\n        TestSupport.eq(0, ClaimQuery.filter(claims, \"OPEN\", null, null, null).size(), \"null status with status filter\");\n        TestSupport.eq(0, ClaimQuery.filter(claims, null, new BigDecimal(\"1\"), null, null).size(), \"null amount with amount filter\");\n        TestSupport.eq(0, ClaimQuery.filter(claims, null, null, LocalDate.of(2026, 1, 1), null).size(), \"null date with from filter\");\n        System.out.println(\"PASS: claims with null filtered fields are excluded\");\n    }\n}\n"
+    }
+  ],
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 5,
+      "phase": "implement",
+      "text": "Which of the three reported symptoms can you reproduce first, and what is the smallest input that shows it?"
+    },
+    {
+      "atMinute": 15,
+      "phase": "implement",
+      "text": "Where should the status normalization live: in the loop, in a helper, or in a comparator? Why?"
+    }
+  ],
+  "fallbackProbe": "Which boundary in this filter is easiest to get subtly wrong, and how does your fix prove it?",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me the questions you would ask a real interviewer. When you are ready, tell me your plan and start the clock.",
+    "implement": "The implementation timer is running. Talk through your approach as you code, and tell me when you want to run the tests.",
+    "test": "Run the tests. Read the first failure carefully, say what you think caused it, then fix it.",
+    "change": "Here is the change request. Treat it as new scope from the interviewer, not as a rewrite of everything you have done.",
+    "debrief": "Time is up. Let us review what happened: the tests, the rubric, your questions, and the hints you used."
+  },
+  "hints": [
+    "Read the comparators in the loop one at a time. The first bug is a comparison operator on the minimum amount, and the date checks are exclusive where they should be inclusive.",
+    "Normalize the status once before the loop. Treat null, blank, and ANY as no filter. Guard null amounts and null dates only when the matching filter is present, then sort with Comparator.nullsLast and a reversed date order.",
+    "Use Comparator.comparing(Claim::incidentDate, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(id). For the change, a TreeMap plus one loop gives sorted status keys and null-safe totals."
+  ],
+  "changeRequest": {
+    "prompt": "Add a search summary for the results header.",
+    "statement": "### Change request\n\nThe search screen needs a summary above the results.\n\nAdd a record Summary with components count, total, max, and byStatus. Add:\n\nsummarize(claims) returning Summary\n\nRequirements:\n\n- A null list returns count 0, totals of zero, and an empty status map.\n- Null claims are skipped.\n- count includes every remaining claim, even when its amount is null.\n- total and max ignore null amounts. When there are no amounts, both are BigDecimal.ZERO.\n- byStatus groups by trimmed, uppercased status. A null or blank status groups under UNKNOWN.\n- Status keys are sorted alphabetically.\n- filter must keep working exactly as fixed.",
+    "starterCode": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.ArrayList;\nimport java.util.Comparator;\nimport java.util.List;\n\npublic final class ClaimQuery {\n\n    public record Claim(String id, String policyNumber, String status, BigDecimal amount, LocalDate incidentDate) {\n    }\n\n    private ClaimQuery() {\n    }\n\n    public static List<Claim> filter(List<Claim> claims, String status, BigDecimal minAmount, LocalDate from, LocalDate to) {\n        if (claims == null) {\n            return List.of();\n        }\n        String wanted = status == null ? \"\" : status.trim();\n        boolean filterStatus = !wanted.isEmpty() && !wanted.equalsIgnoreCase(\"ANY\");\n        List<Claim> result = new ArrayList<>();\n        for (Claim claim : claims) {\n            if (claim == null) {\n                continue;\n            }\n            if (filterStatus) {\n                if (claim.status() == null || !claim.status().trim().equalsIgnoreCase(wanted)) {\n                    continue;\n                }\n            }\n            if (minAmount != null) {\n                if (claim.amount() == null || claim.amount().compareTo(minAmount) < 0) {\n                    continue;\n                }\n            }\n            if (from != null) {\n                if (claim.incidentDate() == null || claim.incidentDate().isBefore(from)) {\n                    continue;\n                }\n            }\n            if (to != null) {\n                if (claim.incidentDate() == null || claim.incidentDate().isAfter(to)) {\n                    continue;\n                }\n            }\n            result.add(claim);\n        }\n        result.sort(Comparator\n                .comparing(Claim::incidentDate, Comparator.nullsLast(Comparator.reverseOrder()))\n                .thenComparing(claim -> claim.id() == null ? \"\" : claim.id()));\n        return result;\n    }\n\n    public record Summary(int count, BigDecimal total, BigDecimal max, java.util.Map<String, Integer> byStatus) {\n    }\n\n    public static Summary summarize(List<Claim> claims) {\n        // TODO: count every non-null claim, add non-null amounts, keep the largest amount,\n        // and group statuses in a sorted map with null or blank status as UNKNOWN.\n        return new Summary(0, BigDecimal.ZERO, BigDecimal.ZERO, java.util.Map.of());\n    }\n}\n",
+    "fileName": "ClaimQuery.java",
+    "hiddenTests": [
+      {
+        "name": "summary counts, totals, and max",
+        "className": "SummaryBasicsTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class SummaryBasicsTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 5, 20);\n        var claims = List.of(\n                new ClaimQuery.Claim(\"C-1\", \"AB-123456\", \"AUTO\", new BigDecimal(\"100.00\"), date),\n                new ClaimQuery.Claim(\"C-2\", \"AB-123456\", \"AUTO\", new BigDecimal(\"200.00\"), date),\n                new ClaimQuery.Claim(\"C-3\", \"AB-123456\", \"PROPERTY\", new BigDecimal(\"50.00\"), date));\n        var summary = ClaimQuery.summarize(claims);\n        TestSupport.eq(3, summary.count(), \"summary count\");\n        TestSupport.check(summary.total().compareTo(new BigDecimal(\"350\")) == 0, \"summary total was \" + summary.total());\n        TestSupport.check(summary.max().compareTo(new BigDecimal(\"200\")) == 0, \"summary max was \" + summary.max());\n        TestSupport.eq(2, summary.byStatus().get(\"AUTO\"), \"AUTO count\");\n        TestSupport.eq(1, summary.byStatus().get(\"PROPERTY\"), \"PROPERTY count\");\n        System.out.println(\"PASS: summary counts, totals, and max\");\n    }\n}\n"
+      },
+      {
+        "name": "an empty or null list has a zero summary",
+        "className": "SummaryEmptyTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class SummaryEmptyTest {\n    public static void main(String[] args) {\n        var summary = ClaimQuery.summarize(List.of());\n        TestSupport.eq(0, summary.count(), \"empty count\");\n        TestSupport.check(summary.total().compareTo(BigDecimal.ZERO) == 0, \"empty total\");\n        TestSupport.check(summary.max().compareTo(BigDecimal.ZERO) == 0, \"empty max\");\n        TestSupport.check(summary.byStatus().isEmpty(), \"empty status map\");\n        var nullSummary = ClaimQuery.summarize(null);\n        TestSupport.eq(0, nullSummary.count(), \"null list count\");\n        System.out.println(\"PASS: an empty or null list has a zero summary\");\n    }\n}\n"
+      },
+      {
+        "name": "missing status groups under UNKNOWN",
+        "className": "SummaryUnknownStatusTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class SummaryUnknownStatusTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 5, 20);\n        var claims = List.of(\n                new ClaimQuery.Claim(\"C-1\", \"AB-123456\", null, new BigDecimal(\"100\"), date),\n                new ClaimQuery.Claim(\"C-2\", \"AB-123456\", \"  \", new BigDecimal(\"100\"), date),\n                new ClaimQuery.Claim(\"C-3\", \"AB-123456\", \" open \", new BigDecimal(\"100\"), date));\n        var summary = ClaimQuery.summarize(claims);\n        TestSupport.eq(2, summary.byStatus().get(\"UNKNOWN\"), \"blank and null statuses\");\n        TestSupport.eq(1, summary.byStatus().get(\"OPEN\"), \"status names are trimmed and uppercased\");\n        System.out.println(\"PASS: missing status groups under UNKNOWN\");\n    }\n}\n"
+      },
+      {
+        "name": "null amounts are counted but ignored in money totals",
+        "className": "SummaryNullAmountTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class SummaryNullAmountTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 5, 20);\n        var claims = java.util.Arrays.asList(\n                new ClaimQuery.Claim(\"C-1\", \"AB-123456\", \"OPEN\", null, date),\n                null,\n                new ClaimQuery.Claim(\"C-2\", \"AB-123456\", \"OPEN\", new BigDecimal(\"75.50\"), date));\n        var summary = ClaimQuery.summarize(claims);\n        TestSupport.eq(2, summary.count(), \"null claims are skipped, null amounts counted\");\n        TestSupport.check(summary.total().compareTo(new BigDecimal(\"75.50\")) == 0, \"total ignores null amount\");\n        TestSupport.check(summary.max().compareTo(new BigDecimal(\"75.50\")) == 0, \"max ignores null amount\");\n        System.out.println(\"PASS: null amounts are counted but ignored in money totals\");\n    }\n}\n"
+      },
+      {
+        "name": "status keys are sorted alphabetically",
+        "className": "SummaryStatusOrderTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class SummaryStatusOrderTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 5, 20);\n        var claims = List.of(\n                new ClaimQuery.Claim(\"C-1\", \"AB-123456\", \"OPEN\", new BigDecimal(\"1\"), date),\n                new ClaimQuery.Claim(\"C-2\", \"AB-123456\", \"CLOSED\", new BigDecimal(\"1\"), date),\n                new ClaimQuery.Claim(\"C-3\", \"AB-123456\", \"IN_REVIEW\", new BigDecimal(\"1\"), date));\n        var keys = new java.util.ArrayList<>(ClaimQuery.summarize(claims).byStatus().keySet());\n        TestSupport.eq(List.of(\"CLOSED\", \"IN_REVIEW\", \"OPEN\"), keys, \"sorted status keys\");\n        System.out.println(\"PASS: status keys are sorted alphabetically\");\n    }\n}\n"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 30,
+      "criterion": "Filter bugs are fixed and the hidden suite passes",
+      "strongAnswer": "Boundary amounts and dates are inclusive, statuses are normalized, nulls are safe, and sorting matches the specification."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "Summary change request passes the hidden suite",
+      "strongAnswer": "Summary counts all claims, ignores null amounts in money totals, groups blank statuses as UNKNOWN, and sorts keys."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Reproduced the bugs from the contract",
+      "strongAnswer": "Asked about symptoms, exact semantics, sort order, and null handling before editing the loop."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Debugged independently",
+      "strongAnswer": "Located the comparison and null-safety defects with little or no hinting."
+    },
+    {
+      "id": "efficiency",
+      "type": "efficiency",
+      "weight": 10,
+      "criterion": "Worked within the phase budget",
+      "strongAnswer": "Fixed the filter and added the summary without destabilizing the existing behaviour."
+    }
+  ],
+  "referenceSolution": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.ArrayList;\nimport java.util.Comparator;\nimport java.util.List;\n\npublic final class ClaimQuery {\n\n    public record Claim(String id, String policyNumber, String status, BigDecimal amount, LocalDate incidentDate) {\n    }\n\n    private ClaimQuery() {\n    }\n\n    public static List<Claim> filter(List<Claim> claims, String status, BigDecimal minAmount, LocalDate from, LocalDate to) {\n        if (claims == null) {\n            return List.of();\n        }\n        String wanted = status == null ? \"\" : status.trim();\n        boolean filterStatus = !wanted.isEmpty() && !wanted.equalsIgnoreCase(\"ANY\");\n        List<Claim> result = new ArrayList<>();\n        for (Claim claim : claims) {\n            if (claim == null) {\n                continue;\n            }\n            if (filterStatus) {\n                if (claim.status() == null || !claim.status().trim().equalsIgnoreCase(wanted)) {\n                    continue;\n                }\n            }\n            if (minAmount != null) {\n                if (claim.amount() == null || claim.amount().compareTo(minAmount) < 0) {\n                    continue;\n                }\n            }\n            if (from != null) {\n                if (claim.incidentDate() == null || claim.incidentDate().isBefore(from)) {\n                    continue;\n                }\n            }\n            if (to != null) {\n                if (claim.incidentDate() == null || claim.incidentDate().isAfter(to)) {\n                    continue;\n                }\n            }\n            result.add(claim);\n        }\n        result.sort(Comparator\n                .comparing(Claim::incidentDate, Comparator.nullsLast(Comparator.reverseOrder()))\n                .thenComparing(claim -> claim.id() == null ? \"\" : claim.id()));\n        return result;\n    }\n\n    public record Summary(int count, BigDecimal total, BigDecimal max, java.util.Map<String, Integer> byStatus) {\n    }\n\n    public static Summary summarize(List<Claim> claims) {\n        if (claims == null) {\n            return new Summary(0, BigDecimal.ZERO, BigDecimal.ZERO, java.util.Map.of());\n        }\n        int count = 0;\n        BigDecimal total = BigDecimal.ZERO;\n        BigDecimal max = null;\n        java.util.Map<String, Integer> byStatus = new java.util.TreeMap<>();\n        for (Claim claim : claims) {\n            if (claim == null) {\n                continue;\n            }\n            count += 1;\n            if (claim.amount() != null) {\n                total = total.add(claim.amount());\n                if (max == null || claim.amount().compareTo(max) > 0) {\n                    max = claim.amount();\n                }\n            }\n            String key = claim.status() == null || claim.status().trim().isEmpty()\n                    ? \"UNKNOWN\" : claim.status().trim().toUpperCase();\n            byStatus.merge(key, 1, Integer::sum);\n        }\n        return new Summary(count, total, max == null ? BigDecimal.ZERO : max, byStatus);\n    }\n}\n"
+}

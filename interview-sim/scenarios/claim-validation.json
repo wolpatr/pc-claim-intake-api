@@ -1,0 +1,268 @@
+{
+  "id": "claim-validation",
+  "title": "Claim intake validation, then a field-level API",
+  "tagline": "Implement deterministic validation rules for a claim submission, then add a field-keyed map API.",
+  "difficulty": "Associate",
+  "topics": [
+    "Claim domain",
+    "Validation",
+    "Records",
+    "Java"
+  ],
+  "phaseTimes": {
+    "brief": 5,
+    "implement": 25,
+    "test": 10,
+    "change": 10,
+    "debrief": 10
+  },
+  "intro": "Next scenario is validation. A claimant submits a claim, and the intake validator must return every problem in a deterministic order. I care about the exact messages because the UI renders them. Ask your questions first.",
+  "clarifyingQuestions": [
+    {
+      "id": "rules",
+      "topic": "Validation rules",
+      "question": "Which fields are required and which are optional?",
+      "keywords": [
+        "required",
+        "optional",
+        "fields",
+        "rules",
+        "name",
+        "phone",
+        "amount"
+      ],
+      "answer": "Name, email, policy number, incident date, claim type, description, and amount are required. Phone is optional, but when present it must contain 7 to 15 digits and only digits, spaces, plus, parentheses, or hyphens.",
+      "coach": "Ask which fields are required versus optional before writing conditions."
+    },
+    {
+      "id": "order",
+      "topic": "Error ordering",
+      "question": "Does the order of the error list matter?",
+      "keywords": [
+        "order",
+        "sequence",
+        "list",
+        "messages",
+        "deterministic",
+        "order"
+      ],
+      "answer": "Yes. Validate in this order: claimant name, email, phone, policy number, incident date, claim type, description, amount. Return every problem, not just the first one.",
+      "coach": "Ask whether errors must be ordered and whether all errors are returned."
+    },
+    {
+      "id": "formats",
+      "topic": "Formats and limits",
+      "question": "What formats and limits should I enforce?",
+      "keywords": [
+        "format",
+        "email",
+        "policy",
+        "amount",
+        "date",
+        "limit",
+        "regex",
+        "365"
+      ],
+      "answer": "Email needs a local part, an at sign, a domain, and a dot in the domain. A policy number looks like AB-123456: two uppercase letters, a hyphen, six digits. Incident dates cannot be in the future or more than 365 days before today. Amounts must be positive and at most 1,000,000. Descriptions need at least 10 characters after trimming. Claim types are AUTO, PROPERTY, GENERAL_LIABILITY, WORKERS_COMPENSATION, OTHER, case-sensitive.",
+      "coach": "Ask for the exact formats, amount ceiling, and date window."
+    },
+    {
+      "id": "clock",
+      "topic": "Clock and testability",
+      "question": "Should validation use today's date directly?",
+      "keywords": [
+        "today",
+        "clock",
+        "date",
+        "testable",
+        "inject",
+        "localdate",
+        "now"
+      ],
+      "answer": "Keep the one-argument overload using LocalDate.now(), but implement the logic in the two-argument overload that takes today as a parameter. The hidden tests use a fixed date.",
+      "coach": "Ask how the date logic is made deterministic."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "What kind of follow-up change is coming?",
+      "keywords": [
+        "change",
+        "follow-up",
+        "map",
+        "field",
+        "errors",
+        "api"
+      ],
+      "answer": "Expect a field-level view for a form UI: the same rules, but keyed by field name with one message per field. The ordered list API must keep working.",
+      "coach": "Ask about the follow-up shape, especially whether the existing API must stay stable."
+    }
+  ],
+  "clarifyingFallback": "Assume the rules are fixed and deterministic. If a detail is missing, pick the simplest strict rule, state it, and keep the error messages stable because tests assert them.",
+  "problemStatement": "### Context\n\nThe claim intake API must validate a submission before it becomes a Claim. The UI needs every problem at once, in a stable order.\n\n### Your task\n\nImplement ClaimIntakeValidator.validate(submission, today) so it returns a list of error messages. The one-argument overload must use LocalDate.now().\n\n### Rules, in this exact order\n\n1. Null submission: submission must not be null, and stop.\n2. Claimant name blank: claimant name is required.\n3. Email blank or not shaped local@domain.dot: email is invalid.\n4. Phone optional. When present it must use only digits, spaces, plus, parentheses, or hyphens, and contain 7 to 15 digits: phone is invalid.\n5. Policy required and must look like AB-123456 (two uppercase letters, hyphen, six digits): policy number is invalid.\n6. Incident date null: incident date is required. Future: incident date cannot be in the future. More than 365 days before today: incident date is too old.\n7. Claim type must be AUTO, PROPERTY, GENERAL_LIABILITY, WORKERS_COMPENSATION, or OTHER, case-sensitive: claim type is invalid.\n8. Description must have at least 10 characters after trimming: description must be at least 10 characters.\n9. Amount null: amount is required. Zero or negative: amount must be positive. Above 1,000,000: amount exceeds the review limit.\n\n### Notes\n\n- Trim values before checking them where the rule says trimmed.\n- Null checks and blank checks should be null-safe.\n- Keep the default package and the starter file.",
+  "fileName": "ClaimIntakeValidator.java",
+  "starterCode": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.ArrayList;\nimport java.util.List;\nimport java.util.Objects;\n\npublic final class ClaimIntakeValidator {\n\n    public record Submission(\n            String claimantName,\n            String email,\n            String phone,\n            String policyNumber,\n            LocalDate incidentDate,\n            String claimType,\n            String description,\n            BigDecimal amount) {\n    }\n\n    private static final BigDecimal MAX_AMOUNT = new BigDecimal(\"1000000\");\n    private static final List<String> CLAIM_TYPES = List.of(\n            \"AUTO\", \"PROPERTY\", \"GENERAL_LIABILITY\", \"WORKERS_COMPENSATION\", \"OTHER\");\n\n    private ClaimIntakeValidator() {\n    }\n\n    public static List<String> validate(Submission submission) {\n        return validate(submission, LocalDate.now());\n    }\n\n    public static List<String> validate(Submission submission, LocalDate today) {\n        Objects.requireNonNull(today, \"today\");\n        List<String> errors = new ArrayList<>();\n        // TODO: apply the rules in the order listed in the problem statement.\n        return errors;\n    }\n\n    private static boolean isBlank(String value) {\n        return value == null || value.trim().isEmpty();\n    }\n}\n",
+  "examples": [
+    {
+      "input": "validate(validSubmission, 2026-05-20)",
+      "output": "[]"
+    },
+    {
+      "input": "validate(allNulls, 2026-05-20)",
+      "output": "seven ordered messages, no phone message"
+    },
+    {
+      "input": "amount = 1,000,000.01",
+      "output": "[\"amount exceeds the review limit\"]"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "a fully valid submission has no errors",
+      "className": "ValidSubmissionTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ValidSubmissionTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var submission = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", \"+1 (555) 010-2000\", \"AB-123456\",\n                today.minusDays(30), \"AUTO\", \"Rear bumper damage after a collision.\", new BigDecimal(\"1500.00\"));\n        TestSupport.eq(List.of(), ClaimIntakeValidator.validate(submission, today), \"valid submission errors\");\n        System.out.println(\"PASS: a fully valid submission has no errors\");\n    }\n}\n"
+    },
+    {
+      "name": "missing required fields produce ordered errors",
+      "className": "MissingRequiredFieldsTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class MissingRequiredFieldsTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var empty = new ClaimIntakeValidator.Submission(null, null, null, null, null, null, null, null);\n        var expected = List.of(\n                \"claimant name is required\",\n                \"email is invalid\",\n                \"policy number is invalid\",\n                \"incident date is required\",\n                \"claim type is invalid\",\n                \"description must be at least 10 characters\",\n                \"amount is required\");\n        TestSupport.eq(expected, ClaimIntakeValidator.validate(empty, today), \"empty submission errors\");\n        System.out.println(\"PASS: missing required fields produce ordered errors\");\n    }\n}\n"
+    },
+    {
+      "name": "bad email and policy are reported",
+      "className": "EmailAndPolicyTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class EmailAndPolicyTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var submission = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"not-an-email\", \"\", \"ab-123456\",\n                today, \"AUTO\", \"0123456789\", new BigDecimal(\"100\"));\n        var errors = ClaimIntakeValidator.validate(submission, today);\n        TestSupport.eq(2, errors.size(), \"only email and policy should fail: \" + errors);\n        TestSupport.check(errors.contains(\"email is invalid\"), \"email error missing: \" + errors);\n        TestSupport.check(errors.contains(\"policy number is invalid\"), \"policy error missing: \" + errors);\n        System.out.println(\"PASS: bad email and policy are reported\");\n    }\n}\n"
+    },
+    {
+      "name": "phone is optional but validated when present",
+      "className": "PhoneRuleTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class PhoneRuleTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var base = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today, \"AUTO\", \"0123456789\", new BigDecimal(\"100\"));\n        TestSupport.eq(List.of(), ClaimIntakeValidator.validate(base, today), \"blank phone must be accepted\");\n        var bad = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", \"call me\", \"AB-123456\",\n                today, \"AUTO\", \"0123456789\", new BigDecimal(\"100\"));\n        TestSupport.eq(List.of(\"phone is invalid\"), ClaimIntakeValidator.validate(bad, today), \"bad phone errors\");\n        System.out.println(\"PASS: phone is optional but validated when present\");\n    }\n}\n"
+    },
+    {
+      "name": "future incident dates are rejected",
+      "className": "FutureIncidentDateTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class FutureIncidentDateTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var submission = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today.plusDays(1), \"AUTO\", \"0123456789\", new BigDecimal(\"100\"));\n        TestSupport.eq(List.of(\"incident date cannot be in the future\"),\n                ClaimIntakeValidator.validate(submission, today), \"future incident date\");\n        System.out.println(\"PASS: future incident dates are rejected\");\n    }\n}\n"
+    },
+    {
+      "name": "incident dates are allowed up to 365 days old",
+      "className": "IncidentAgeTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class IncidentAgeTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var atLimit = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today.minusDays(365), \"AUTO\", \"0123456789\", new BigDecimal(\"100\"));\n        TestSupport.eq(List.of(), ClaimIntakeValidator.validate(atLimit, today), \"365 days old must pass\");\n        var tooOld = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today.minusDays(366), \"AUTO\", \"0123456789\", new BigDecimal(\"100\"));\n        TestSupport.eq(List.of(\"incident date is too old\"),\n                ClaimIntakeValidator.validate(tooOld, today), \"366 days old must fail\");\n        System.out.println(\"PASS: incident dates are allowed up to 365 days old\");\n    }\n}\n"
+    },
+    {
+      "name": "amount must be positive and within the review limit",
+      "className": "AmountRulesTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class AmountRulesTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var zero = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today, \"AUTO\", \"0123456789\", BigDecimal.ZERO);\n        TestSupport.eq(List.of(\"amount must be positive\"), ClaimIntakeValidator.validate(zero, today), \"zero amount\");\n        var atLimit = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today, \"AUTO\", \"0123456789\", new BigDecimal(\"1000000\"));\n        TestSupport.eq(List.of(), ClaimIntakeValidator.validate(atLimit, today), \"limit amount must pass\");\n        var above = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today, \"AUTO\", \"0123456789\", new BigDecimal(\"1000000.01\"));\n        TestSupport.eq(List.of(\"amount exceeds the review limit\"),\n                ClaimIntakeValidator.validate(above, today), \"over-limit amount\");\n        System.out.println(\"PASS: amount must be positive and within the review limit\");\n    }\n}\n"
+    },
+    {
+      "name": "description must be at least ten trimmed characters",
+      "className": "DescriptionLengthTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class DescriptionLengthTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var shortDescription = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today, \"AUTO\", \"  123456789  \", new BigDecimal(\"100\"));\n        TestSupport.eq(List.of(\"description must be at least 10 characters\"),\n                ClaimIntakeValidator.validate(shortDescription, today), \"nine trimmed characters\");\n        var exact = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today, \"AUTO\", \"  1234567890  \", new BigDecimal(\"100\"));\n        TestSupport.eq(List.of(), ClaimIntakeValidator.validate(exact, today), \"ten trimmed characters\");\n        System.out.println(\"PASS: description must be at least ten trimmed characters\");\n    }\n}\n"
+    },
+    {
+      "name": "claim type must be one of the allowed values",
+      "className": "ClaimTypeTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ClaimTypeTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var submission = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today, \"auto\", \"0123456789\", new BigDecimal(\"100\"));\n        TestSupport.eq(List.of(\"claim type is invalid\"),\n                ClaimIntakeValidator.validate(submission, today), \"lowercase claim type\");\n        System.out.println(\"PASS: claim type must be one of the allowed values\");\n    }\n}\n"
+    },
+    {
+      "name": "null submission is reported as one error",
+      "className": "NullSubmissionTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class NullSubmissionTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        TestSupport.eq(List.of(\"submission must not be null\"),\n                ClaimIntakeValidator.validate(null, today), \"null submission\");\n        System.out.println(\"PASS: null submission is reported as one error\");\n    }\n}\n"
+    }
+  ],
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 5,
+      "phase": "implement",
+      "text": "Which rule are you implementing first, and why is the ordering of the returned list important?"
+    },
+    {
+      "atMinute": 15,
+      "phase": "implement",
+      "text": "Walk me through how you keep the date rules testable without sleeping or using the real clock in tests."
+    }
+  ],
+  "fallbackProbe": "Which validation rule is most likely to produce a false rejection, and how would you prove it does not?",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me the questions you would ask a real interviewer. When you are ready, tell me your plan and start the clock.",
+    "implement": "The implementation timer is running. Talk through your approach as you code, and tell me when you want to run the tests.",
+    "test": "Run the tests. Read the first failure carefully, say what you think caused it, then fix it.",
+    "change": "Here is the change request. Treat it as new scope from the interviewer, not as a rewrite of everything you have done.",
+    "debrief": "Time is up. Let us review what happened: the tests, the rubric, your questions, and the hints you used."
+  },
+  "hints": [
+    "Write one block per field in the documented order and add to a List. Do not return early except for a null submission.",
+    "Extract a null-safe isBlank helper. For phone, strip non-digits with replaceAll and then check the digit count. For the date use today.minusDays(365) and inclusive comparisons.",
+    "For the change request, copy the same conditions into a LinkedHashMap keyed by field name. Reuse the same message strings so both APIs stay consistent."
+  ],
+  "changeRequest": {
+    "prompt": "Expose the same rules as a field-keyed map for a form UI.",
+    "statement": "### Change request\n\nThe claim form UI wants to attach each message to a field.\n\nAdd:\n\nvalidateByField(submission, today) returning Map<String, String>\n\nRequirements:\n\n- Use the same rules and message strings as validate.\n- Include only fields that fail.\n- Keys are claimantName, email, phone, policyNumber, incidentDate, claimType, description, and amount.\n- A null submission returns a map with the key submission and the message submission must not be null.\n- Each field carries at most one message, and the incident date and amount rules keep their precedence.\n- The original validate methods must keep working exactly as before.",
+    "starterCode": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.ArrayList;\nimport java.util.List;\nimport java.util.Objects;\n\npublic final class ClaimIntakeValidator {\n\n    public record Submission(\n            String claimantName,\n            String email,\n            String phone,\n            String policyNumber,\n            LocalDate incidentDate,\n            String claimType,\n            String description,\n            BigDecimal amount) {\n    }\n\n    private static final BigDecimal MAX_AMOUNT = new BigDecimal(\"1000000\");\n    private static final List<String> CLAIM_TYPES = List.of(\n            \"AUTO\", \"PROPERTY\", \"GENERAL_LIABILITY\", \"WORKERS_COMPENSATION\", \"OTHER\");\n\n    private ClaimIntakeValidator() {\n    }\n\n    public static List<String> validate(Submission submission) {\n        return validate(submission, LocalDate.now());\n    }\n\n    public static List<String> validate(Submission submission, LocalDate today) {\n        Objects.requireNonNull(today, \"today\");\n        List<String> errors = new ArrayList<>();\n        if (submission == null) {\n            errors.add(\"submission must not be null\");\n            return errors;\n        }\n        if (isBlank(submission.claimantName())) {\n            errors.add(\"claimant name is required\");\n        }\n        if (isBlank(submission.email())\n                || !submission.email().trim().matches(\"[^@ ]+@[^@ ]+[.][^@ ]+\")) {\n            errors.add(\"email is invalid\");\n        }\n        if (!isBlank(submission.phone())) {\n            String phone = submission.phone().trim();\n            String digits = phone.replaceAll(\"[^0-9]\", \"\");\n            if (!phone.matches(\"[0-9+() -]+\") || digits.length() < 7 || digits.length() > 15) {\n                errors.add(\"phone is invalid\");\n            }\n        }\n        if (isBlank(submission.policyNumber())\n                || !submission.policyNumber().trim().matches(\"[A-Z]{2}-[0-9]{6}\")) {\n            errors.add(\"policy number is invalid\");\n        }\n        if (submission.incidentDate() == null) {\n            errors.add(\"incident date is required\");\n        } else if (submission.incidentDate().isAfter(today)) {\n            errors.add(\"incident date cannot be in the future\");\n        } else if (submission.incidentDate().isBefore(today.minusDays(365))) {\n            errors.add(\"incident date is too old\");\n        }\n        if (isBlank(submission.claimType()) || !CLAIM_TYPES.contains(submission.claimType().trim())) {\n            errors.add(\"claim type is invalid\");\n        }\n        if (isBlank(submission.description()) || submission.description().trim().length() < 10) {\n            errors.add(\"description must be at least 10 characters\");\n        }\n        if (submission.amount() == null) {\n            errors.add(\"amount is required\");\n        } else if (submission.amount().signum() <= 0) {\n            errors.add(\"amount must be positive\");\n        } else if (submission.amount().compareTo(MAX_AMOUNT) > 0) {\n            errors.add(\"amount exceeds the review limit\");\n        }\n        return errors;\n    }\n\n    public static java.util.Map<String, String> validateByField(Submission submission, LocalDate today) {\n        Objects.requireNonNull(today, \"today\");\n        // TODO: return the first validation message for every invalid field, keyed by\n        // claimantName, email, phone, policyNumber, incidentDate, claimType, description,\n        // or amount. A null submission maps \"submission\" to its message.\n        return new java.util.LinkedHashMap<>();\n    }\n\n    private static boolean isBlank(String value) {\n        return value == null || value.trim().isEmpty();\n    }\n}\n",
+    "fileName": "ClaimIntakeValidator.java",
+    "hiddenTests": [
+      {
+        "name": "invalid fields are keyed by field name",
+        "className": "ByFieldInvalidTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ByFieldInvalidTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var submission = new ClaimIntakeValidator.Submission(\n                \" \", \"bad\", \"call me\", \"ab-1\", today.plusDays(2), \"auto\", \"short\", BigDecimal.ZERO);\n        var issues = ClaimIntakeValidator.validateByField(submission, today);\n        TestSupport.eq(\"claimant name is required\", issues.get(\"claimantName\"), \"claimantName message\");\n        TestSupport.eq(\"email is invalid\", issues.get(\"email\"), \"email message\");\n        TestSupport.eq(\"phone is invalid\", issues.get(\"phone\"), \"phone message\");\n        TestSupport.eq(\"policy number is invalid\", issues.get(\"policyNumber\"), \"policyNumber message\");\n        TestSupport.eq(\"incident date cannot be in the future\", issues.get(\"incidentDate\"), \"incidentDate message\");\n        TestSupport.eq(\"claim type is invalid\", issues.get(\"claimType\"), \"claimType message\");\n        TestSupport.eq(\"description must be at least 10 characters\", issues.get(\"description\"), \"description message\");\n        TestSupport.eq(\"amount must be positive\", issues.get(\"amount\"), \"amount message\");\n        System.out.println(\"PASS: invalid fields are keyed by field name\");\n    }\n}\n"
+      },
+      {
+        "name": "a valid submission maps no issues",
+        "className": "ByFieldValidTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ByFieldValidTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var submission = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", \"\", \"AB-123456\",\n                today.minusDays(10), \"PROPERTY\", \"Water damage to the kitchen floor.\", new BigDecimal(\"2500.00\"));\n        TestSupport.eq(java.util.Map.of(), ClaimIntakeValidator.validateByField(submission, today), \"valid map\");\n        System.out.println(\"PASS: a valid submission maps no issues\");\n    }\n}\n"
+      },
+      {
+        "name": "a null submission is keyed as submission",
+        "className": "ByFieldNullTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ByFieldNullTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var issues = ClaimIntakeValidator.validateByField(null, today);\n        TestSupport.eq(1, issues.size(), \"one issue for null submission\");\n        TestSupport.eq(\"submission must not be null\", issues.get(\"submission\"), \"submission message\");\n        System.out.println(\"PASS: a null submission is keyed as submission\");\n    }\n}\n"
+      },
+      {
+        "name": "phone remains optional in the map view",
+        "className": "ByFieldPhoneTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ByFieldPhoneTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var submission = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today, \"AUTO\", \"0123456789\", new BigDecimal(\"100\"));\n        TestSupport.check(!ClaimIntakeValidator.validateByField(submission, today).containsKey(\"phone\"),\n                \"null phone must not appear as an issue\");\n        System.out.println(\"PASS: phone remains optional in the map view\");\n    }\n}\n"
+      },
+      {
+        "name": "one message is stored per field",
+        "className": "ByFieldSingleMessageTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ByFieldSingleMessageTest {\n    public static void main(String[] args) {\n        var today = LocalDate.of(2026, 5, 20);\n        var submission = new ClaimIntakeValidator.Submission(\n                \"Avery Stone\", \"avery@example.com\", null, \"AB-123456\",\n                today.minusDays(400), \"AUTO\", \"0123456789\", new BigDecimal(\"-5\"));\n        var issues = ClaimIntakeValidator.validateByField(submission, today);\n        TestSupport.eq(\"incident date is too old\", issues.get(\"incidentDate\"), \"incident date first failure\");\n        TestSupport.eq(\"amount must be positive\", issues.get(\"amount\"), \"amount first failure\");\n        System.out.println(\"PASS: one message is stored per field\");\n    }\n}\n"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 30,
+      "criterion": "Base validation rules pass the hidden suite",
+      "strongAnswer": "All base tests pass, including ordering, optional phone, date boundaries, amount limits, and exact messages."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "Field-keyed change request passes the hidden suite",
+      "strongAnswer": "validateByField returns only failing fields with consistent messages and leaves the list API stable."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Clarified rules, ordering, and testability",
+      "strongAnswer": "Asked about required fields, message order, exact formats, and the injected date before coding."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Worked independently",
+      "strongAnswer": "Solved the ordering and boundary cases with no hints or one hint after a real attempt."
+    },
+    {
+      "id": "efficiency",
+      "type": "efficiency",
+      "weight": 10,
+      "criterion": "Worked within the phase budget",
+      "strongAnswer": "Implemented and tested the rules and the map view inside the budget."
+    }
+  ],
+  "referenceSolution": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.ArrayList;\nimport java.util.List;\nimport java.util.Objects;\n\npublic final class ClaimIntakeValidator {\n\n    public record Submission(\n            String claimantName,\n            String email,\n            String phone,\n            String policyNumber,\n            LocalDate incidentDate,\n            String claimType,\n            String description,\n            BigDecimal amount) {\n    }\n\n    private static final BigDecimal MAX_AMOUNT = new BigDecimal(\"1000000\");\n    private static final List<String> CLAIM_TYPES = List.of(\n            \"AUTO\", \"PROPERTY\", \"GENERAL_LIABILITY\", \"WORKERS_COMPENSATION\", \"OTHER\");\n\n    private ClaimIntakeValidator() {\n    }\n\n    public static List<String> validate(Submission submission) {\n        return validate(submission, LocalDate.now());\n    }\n\n    public static List<String> validate(Submission submission, LocalDate today) {\n        Objects.requireNonNull(today, \"today\");\n        List<String> errors = new ArrayList<>();\n        if (submission == null) {\n            errors.add(\"submission must not be null\");\n            return errors;\n        }\n        if (isBlank(submission.claimantName())) {\n            errors.add(\"claimant name is required\");\n        }\n        if (isBlank(submission.email())\n                || !submission.email().trim().matches(\"[^@ ]+@[^@ ]+[.][^@ ]+\")) {\n            errors.add(\"email is invalid\");\n        }\n        if (!isBlank(submission.phone())) {\n            String phone = submission.phone().trim();\n            String digits = phone.replaceAll(\"[^0-9]\", \"\");\n            if (!phone.matches(\"[0-9+() -]+\") || digits.length() < 7 || digits.length() > 15) {\n                errors.add(\"phone is invalid\");\n            }\n        }\n        if (isBlank(submission.policyNumber())\n                || !submission.policyNumber().trim().matches(\"[A-Z]{2}-[0-9]{6}\")) {\n            errors.add(\"policy number is invalid\");\n        }\n        if (submission.incidentDate() == null) {\n            errors.add(\"incident date is required\");\n        } else if (submission.incidentDate().isAfter(today)) {\n            errors.add(\"incident date cannot be in the future\");\n        } else if (submission.incidentDate().isBefore(today.minusDays(365))) {\n            errors.add(\"incident date is too old\");\n        }\n        if (isBlank(submission.claimType()) || !CLAIM_TYPES.contains(submission.claimType().trim())) {\n            errors.add(\"claim type is invalid\");\n        }\n        if (isBlank(submission.description()) || submission.description().trim().length() < 10) {\n            errors.add(\"description must be at least 10 characters\");\n        }\n        if (submission.amount() == null) {\n            errors.add(\"amount is required\");\n        } else if (submission.amount().signum() <= 0) {\n            errors.add(\"amount must be positive\");\n        } else if (submission.amount().compareTo(MAX_AMOUNT) > 0) {\n            errors.add(\"amount exceeds the review limit\");\n        }\n        return errors;\n    }\n\n    public static java.util.Map<String, String> validateByField(Submission submission, LocalDate today) {\n        Objects.requireNonNull(today, \"today\");\n        java.util.Map<String, String> issues = new java.util.LinkedHashMap<>();\n        if (submission == null) {\n            issues.put(\"submission\", \"submission must not be null\");\n            return issues;\n        }\n        if (isBlank(submission.claimantName())) {\n            issues.put(\"claimantName\", \"claimant name is required\");\n        }\n        if (isBlank(submission.email())\n                || !submission.email().trim().matches(\"[^@ ]+@[^@ ]+[.][^@ ]+\")) {\n            issues.put(\"email\", \"email is invalid\");\n        }\n        if (!isBlank(submission.phone())) {\n            String phone = submission.phone().trim();\n            String digits = phone.replaceAll(\"[^0-9]\", \"\");\n            if (!phone.matches(\"[0-9+() -]+\") || digits.length() < 7 || digits.length() > 15) {\n                issues.put(\"phone\", \"phone is invalid\");\n            }\n        }\n        if (isBlank(submission.policyNumber())\n                || !submission.policyNumber().trim().matches(\"[A-Z]{2}-[0-9]{6}\")) {\n            issues.put(\"policyNumber\", \"policy number is invalid\");\n        }\n        if (submission.incidentDate() == null) {\n            issues.put(\"incidentDate\", \"incident date is required\");\n        } else if (submission.incidentDate().isAfter(today)) {\n            issues.put(\"incidentDate\", \"incident date cannot be in the future\");\n        } else if (submission.incidentDate().isBefore(today.minusDays(365))) {\n            issues.put(\"incidentDate\", \"incident date is too old\");\n        }\n        if (isBlank(submission.claimType()) || !CLAIM_TYPES.contains(submission.claimType().trim())) {\n            issues.put(\"claimType\", \"claim type is invalid\");\n        }\n        if (isBlank(submission.description()) || submission.description().trim().length() < 10) {\n            issues.put(\"description\", \"description must be at least 10 characters\");\n        }\n        if (submission.amount() == null) {\n            issues.put(\"amount\", \"amount is required\");\n        } else if (submission.amount().signum() <= 0) {\n            issues.put(\"amount\", \"amount must be positive\");\n        } else if (submission.amount().compareTo(MAX_AMOUNT) > 0) {\n            issues.put(\"amount\", \"amount exceeds the review limit\");\n        }\n        return issues;\n    }\n\n    private static boolean isBlank(String value) {\n        return value == null || value.trim().isEmpty();\n    }\n}\n"
+}

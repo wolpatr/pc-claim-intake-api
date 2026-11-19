@@ -27,6 +27,13 @@ REST endpoints, persistence, and CI are later steps in the plan.
 A separate offline quiz for self-testing this project and the study plan lives in
 [`quiz/`](quiz/README.md). Open `quiz/index.html` in a browser; it needs no build or server.
 
+## Interview simulator
+
+A timed live coding interview simulator for Java practice lives in
+[`interview-sim/`](interview-sim/README.md). It compiles and runs your code locally,
+interrupts with probes, adds a change request, and scores a debrief. Start it with
+`node interview-sim/server.mjs` and open http://127.0.0.1:4321.
+
 ## Stack
 
 - Java

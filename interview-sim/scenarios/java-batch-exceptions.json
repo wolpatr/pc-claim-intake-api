@@ -1,0 +1,255 @@
+{
+  "id": "java-batch-exceptions",
+  "title": "Batch claim processing with custom exceptions",
+  "tagline": "Design a rule-based batch processor with checked and unexpected failures, then add strict fail-fast mode.",
+  "difficulty": "Consultant",
+  "topics": [
+    "Java",
+    "OOP design",
+    "Exception handling",
+    "Interfaces"
+  ],
+  "phaseTimes": {
+    "brief": 5,
+    "implement": 25,
+    "test": 10,
+    "change": 10,
+    "debrief": 10
+  },
+  "intro": "This is the design round. We process a batch of claims through a list of rules. Some failures are expected validation problems, others are genuine bugs, and the report must distinguish them without hiding either. Let us clarify the contract before you design.",
+  "clarifyingQuestions": [
+    {
+      "id": "rules",
+      "topic": "Rule contract",
+      "question": "How do rules signal a validation failure?",
+      "keywords": [
+        "rule",
+        "exception",
+        "validation",
+        "signal",
+        "throw",
+        "checked",
+        "interface"
+      ],
+      "answer": "A rule throws ClaimValidationException with the claim id and a short message. Rules run in list order, and the first thrown exception becomes that claim rejection reason. Do not change the ClaimRule interface.",
+      "coach": "Ask how rules report failure and whether rule order matters."
+    },
+    {
+      "id": "unexpected",
+      "topic": "Unexpected failures",
+      "question": "What happens when a rule throws a RuntimeException?",
+      "keywords": [
+        "unexpected",
+        "runtime",
+        "bug",
+        "unchecked",
+        "catch",
+        "report"
+      ],
+      "answer": "Catch it and reject that claim with a reason that starts with unexpected: followed by the exception message, or the simple class name when the message is null. One bad claim must not kill the batch.",
+      "coach": "Ask how genuine bugs are contained so one claim cannot abort the report."
+    },
+    {
+      "id": "report",
+      "topic": "Report shape",
+      "question": "What should the report contain and in what order?",
+      "keywords": [
+        "report",
+        "outcome",
+        "order",
+        "count",
+        "accepted",
+        "rejected",
+        "immutable"
+      ],
+      "answer": "The report contains accepted and rejected counts and an outcome per non-null claim, in input order. Accepted outcomes use the reason accepted. Null claims are ignored. Return an immutable outcomes list.",
+      "coach": "Ask about outcome ordering, reason strings, and immutability."
+    },
+    {
+      "id": "strict",
+      "topic": "Strict mode",
+      "question": "Will there be a fail-fast mode?",
+      "keywords": [
+        "strict",
+        "fail-fast",
+        "stop",
+        "exception",
+        "change",
+        "follow-up"
+      ],
+      "answer": "Yes. The change request adds processStrict: same rules, but the first rejected claim throws BatchRejectedException carrying the claim id and the accepted outcomes collected before it. Both validation and unexpected runtime failures stop the batch.",
+      "coach": "Ask whether a fail-fast or strict variant is planned."
+    },
+    {
+      "id": "scope",
+      "topic": "Threading and persistence",
+      "question": "Do I need concurrency or persistence?",
+      "keywords": [
+        "thread",
+        "concurrency",
+        "database",
+        "persistence",
+        "async"
+      ],
+      "answer": "No. This is a pure in-memory batch processor. No threads, no persistence, no retries. Keep the rule objects side-effect free in your tests.",
+      "coach": "Ask whether concurrency or persistence is in scope."
+    }
+  ],
+  "clarifyingFallback": "Assume a single-threaded in-memory batch processor. When a detail is open, choose the behaviour that keeps one claim failure from destroying the whole report, and state it.",
+  "problemStatement": "### Context\n\nClaims arrive in batches and pass through a list of validation rules. The processor must produce an auditable report instead of throwing away the batch.\n\n### Your task\n\nImplement ClaimBatchProcessor.process(claims):\n\n- For each non-null claim, run every rule in list order.\n- If a rule throws ClaimValidationException, reject that claim and use the exception message as the reason.\n- If a rule throws any other RuntimeException, reject that claim with a reason starting with unexpected: followed by the message, or by the simple class name when the message is null.\n- If all rules pass, accept the claim with reason accepted.\n- Keep outcomes in input order and skip null claims.\n- Return a Report with accepted count, rejected count, and an immutable outcomes list.\n\nThe ClaimRule interface, the Claim record, the Outcome record, and ClaimValidationException must stay compatible with the starter.\n\n### Visible examples\n\n- A claim with blank policy is rejected with policy number is required.\n- A rule that throws IllegalStateException(\"boom\") produces unexpected: boom.\n- Two claims, first valid and second invalid: accepted 1, rejected 1, outcomes in input order.\n- A null claim is skipped entirely.\n\n### Design expectations\n\n- Rules are small objects or lambdas implementing ClaimRule.\n- Do not catch Throwable, and do not swallow the cause information.\n- The change request will add a fail-fast variant, so keep the per-claim loop easy to reuse.",
+  "fileName": "ClaimBatchProcessor.java",
+  "starterCode": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.List;\nimport java.util.Objects;\n\npublic final class ClaimBatchProcessor {\n\n    public record Claim(String id, String policyNumber, BigDecimal amount) {\n    }\n\n    public record Outcome(String claimId, boolean accepted, String reason) {\n    }\n\n    public record Report(int accepted, int rejected, List<Outcome> outcomes) {\n    }\n\n    public static final class ClaimValidationException extends Exception {\n        private final String claimId;\n\n        public ClaimValidationException(String claimId, String message) {\n            super(message);\n            this.claimId = claimId;\n        }\n\n        public String getClaimId() {\n            return claimId;\n        }\n    }\n\n    public interface ClaimRule {\n        void check(Claim claim) throws ClaimValidationException;\n    }\n\n    private final List<ClaimRule> rules;\n\n    public ClaimBatchProcessor(List<ClaimRule> rules) {\n        this.rules = List.copyOf(Objects.requireNonNull(rules, \"rules\"));\n    }\n\n    public static ClaimRule requiredPolicy() {\n        return claim -> {\n            if (claim.policyNumber() == null || claim.policyNumber().isBlank()) {\n                throw new ClaimValidationException(claim.id(), \"policy number is required\");\n            }\n        };\n    }\n\n    public static ClaimRule positiveAmount() {\n        return claim -> {\n            if (claim.amount() == null || claim.amount().signum() <= 0) {\n                throw new ClaimValidationException(claim.id(), \"amount must be positive\");\n            }\n        };\n    }\n\n    public Report process(List<Claim> claims) {\n        // TODO: run every rule for each claim. Catch ClaimValidationException and record its\n        // message as the rejection reason. Catch unexpected RuntimeException as\n        // \"unexpected: \" plus the message or the exception simple name. Keep input order,\n        // ignore null claims, and use \"accepted\" as the accepted outcome reason.\n        return new Report(0, 0, List.of());\n    }\n}\n",
+  "examples": [
+    {
+      "input": "claim with blank policy",
+      "output": "Outcome(C-1, false, \"policy number is required\")"
+    },
+    {
+      "input": "rule throws IllegalStateException(\"boom\")",
+      "output": "Outcome(C-1, false, \"unexpected: boom\")"
+    },
+    {
+      "input": "null claim in the list",
+      "output": "skipped; no outcome"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "all valid claims are accepted in order",
+      "className": "AllValidTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class AllValidTest {\n    public static void main(String[] args) {\n        var processor = new ClaimBatchProcessor(List.of(\n                ClaimBatchProcessor.requiredPolicy(), ClaimBatchProcessor.positiveAmount()));\n        var report = processor.process(List.of(\n                new ClaimBatchProcessor.Claim(\"C-1\", \"AB-123456\", new BigDecimal(\"100\")),\n                new ClaimBatchProcessor.Claim(\"C-2\", \"CD-999999\", new BigDecimal(\"200\"))));\n        TestSupport.eq(2, report.accepted(), \"accepted count\");\n        TestSupport.eq(0, report.rejected(), \"rejected count\");\n        TestSupport.eq(2, report.outcomes().size(), \"outcome count\");\n        TestSupport.eq(\"C-1\", report.outcomes().get(0).claimId(), \"first outcome id\");\n        TestSupport.check(report.outcomes().get(0).accepted(), \"first outcome accepted\");\n        TestSupport.eq(\"accepted\", report.outcomes().get(0).reason(), \"accepted reason\");\n        System.out.println(\"PASS: all valid claims are accepted in order\");\n    }\n}\n"
+    },
+    {
+      "name": "validation failures keep their message",
+      "className": "ValidationReasonTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ValidationReasonTest {\n    public static void main(String[] args) {\n        var processor = new ClaimBatchProcessor(List.of(\n                ClaimBatchProcessor.requiredPolicy(), ClaimBatchProcessor.positiveAmount()));\n        var report = processor.process(List.of(\n                new ClaimBatchProcessor.Claim(\"C-1\", \" \", new BigDecimal(\"100\")),\n                new ClaimBatchProcessor.Claim(\"C-2\", \"AB-123456\", BigDecimal.ZERO)));\n        TestSupport.eq(0, report.accepted(), \"accepted count\");\n        TestSupport.eq(2, report.rejected(), \"rejected count\");\n        TestSupport.eq(\"policy number is required\", report.outcomes().get(0).reason(), \"policy reason\");\n        TestSupport.eq(\"amount must be positive\", report.outcomes().get(1).reason(), \"amount reason\");\n        System.out.println(\"PASS: validation failures keep their message\");\n    }\n}\n"
+    },
+    {
+      "name": "the first failing rule supplies the reason",
+      "className": "RuleOrderTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class RuleOrderTest {\n    public static void main(String[] args) {\n        ClaimBatchProcessor.ClaimRule first = claim -> {\n            throw new ClaimBatchProcessor.ClaimValidationException(claim.id(), \"first rule\");\n        };\n        ClaimBatchProcessor.ClaimRule second = claim -> {\n            throw new ClaimBatchProcessor.ClaimValidationException(claim.id(), \"second rule\");\n        };\n        var processor = new ClaimBatchProcessor(List.of(first, second));\n        var report = processor.process(List.of(\n                new ClaimBatchProcessor.Claim(\"C-1\", \"AB-123456\", new BigDecimal(\"100\"))));\n        TestSupport.eq(\"first rule\", report.outcomes().get(0).reason(), \"first rule reason\");\n        System.out.println(\"PASS: the first failing rule supplies the reason\");\n    }\n}\n"
+    },
+    {
+      "name": "unexpected runtime failures are rejected",
+      "className": "UnexpectedRuntimeTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class UnexpectedRuntimeTest {\n    public static void main(String[] args) {\n        ClaimBatchProcessor.ClaimRule boom = claim -> {\n            throw new IllegalStateException(\"boom\");\n        };\n        var processor = new ClaimBatchProcessor(List.of(boom));\n        var report = processor.process(List.of(\n                new ClaimBatchProcessor.Claim(\"C-1\", \"AB-123456\", new BigDecimal(\"100\"))));\n        TestSupport.eq(1, report.rejected(), \"rejected count\");\n        TestSupport.check(report.outcomes().get(0).reason().contains(\"unexpected\"), \"reason must say unexpected\");\n        TestSupport.check(report.outcomes().get(0).reason().contains(\"boom\"), \"reason must include the message\");\n        System.out.println(\"PASS: unexpected runtime failures are rejected\");\n    }\n}\n"
+    },
+    {
+      "name": "null claims are ignored",
+      "className": "NullClaimsTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class NullClaimsTest {\n    public static void main(String[] args) {\n        var processor = new ClaimBatchProcessor(List.of(ClaimBatchProcessor.requiredPolicy()));\n        var report = processor.process(java.util.Arrays.asList(\n                null,\n                new ClaimBatchProcessor.Claim(\"C-1\", \"AB-123456\", new BigDecimal(\"100\")),\n                null));\n        TestSupport.eq(1, report.accepted(), \"accepted count\");\n        TestSupport.eq(0, report.rejected(), \"rejected count\");\n        TestSupport.eq(1, report.outcomes().size(), \"outcome count\");\n        System.out.println(\"PASS: null claims are ignored\");\n    }\n}\n"
+    },
+    {
+      "name": "outcomes keep the input order",
+      "className": "InputOrderTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class InputOrderTest {\n    public static void main(String[] args) {\n        var processor = new ClaimBatchProcessor(List.of(ClaimBatchProcessor.requiredPolicy()));\n        var report = processor.process(List.of(\n                new ClaimBatchProcessor.Claim(\"C-2\", \"AB-123456\", new BigDecimal(\"100\")),\n                new ClaimBatchProcessor.Claim(\"C-1\", \" \", new BigDecimal(\"100\")),\n                new ClaimBatchProcessor.Claim(\"C-3\", \"CD-999999\", new BigDecimal(\"100\"))));\n        var ids = report.outcomes().stream().map(ClaimBatchProcessor.Outcome::claimId).toList();\n        TestSupport.eq(List.of(\"C-2\", \"C-1\", \"C-3\"), ids, \"outcome order\");\n        System.out.println(\"PASS: outcomes keep the input order\");\n    }\n}\n"
+    },
+    {
+      "name": "validation exceptions carry the claim id",
+      "className": "ExceptionCarriesClaimTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class ExceptionCarriesClaimTest {\n    public static void main(String[] args) {\n        var rule = ClaimBatchProcessor.requiredPolicy();\n        var claim = new ClaimBatchProcessor.Claim(\"C-9\", \" \", new BigDecimal(\"100\"));\n        var error = TestSupport.throwsType(ClaimBatchProcessor.ClaimValidationException.class,\n                () -> rule.check(claim), \"blank policy must throw ClaimValidationException\");\n        TestSupport.eq(\"C-9\", error.getClaimId(), \"exception claim id\");\n        System.out.println(\"PASS: validation exceptions carry the claim id\");\n    }\n}\n"
+    },
+    {
+      "name": "an empty or null batch produces an empty report",
+      "className": "EmptyBatchTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class EmptyBatchTest {\n    public static void main(String[] args) {\n        var processor = new ClaimBatchProcessor(List.of(ClaimBatchProcessor.requiredPolicy()));\n        TestSupport.eq(0, processor.process(List.of()).accepted(), \"empty list accepted\");\n        TestSupport.eq(0, processor.process(List.of()).rejected(), \"empty list rejected\");\n        TestSupport.eq(0, processor.process(null).outcomes().size(), \"null list outcomes\");\n        System.out.println(\"PASS: an empty or null batch produces an empty report\");\n    }\n}\n"
+    }
+  ],
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 5,
+      "phase": "implement",
+      "text": "What is the difference between a validation failure and a bug in a rule, and how does the report show it?"
+    },
+    {
+      "atMinute": 15,
+      "phase": "implement",
+      "text": "If processStrict has to reuse process, where do you split the loop so the two modes do not drift apart?"
+    }
+  ],
+  "fallbackProbe": "Which exception design choice would you defend in review, and what would you reject?",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me the questions you would ask a real interviewer. When you are ready, tell me your plan and start the clock.",
+    "implement": "The implementation timer is running. Talk through your approach as you code, and tell me when you want to run the tests.",
+    "test": "Run the tests. Read the first failure carefully, say what you think caused it, then fix it.",
+    "change": "Here is the change request. Treat it as new scope from the interviewer, not as a rewrite of everything you have done.",
+    "debrief": "Time is up. Let us review what happened: the tests, the rubric, your questions, and the hints you used."
+  },
+  "hints": [
+    "Keep one loop over claims and one inner loop over rules. Catch the checked exception first, then RuntimeException, so the rejection reason is precise.",
+    "Build outcomes into an ArrayList and wrap with List.copyOf at the end. For null messages, fall back to error.getClass().getSimpleName() before prefixing unexpected: .",
+    "For the change, extract a runRules helper or duplicate the small loop in processStrict, but keep the accepted outcomes in a separate list so the exception can carry them."
+  ],
+  "changeRequest": {
+    "prompt": "Add a fail-fast strict batch mode.",
+    "statement": "### Change request\n\nThe nightly job wants fail-fast behaviour.\n\nAdd a nested BatchRejectedException that extends RuntimeException, and processStrict(claims).\n\nRequirements:\n\n- BatchRejectedException carries the failing claim id and the list of accepted Outcome objects collected before the failure. Both are exposed through getters and the list must be immutable.\n- The exception message must name the failing claim id.\n- processStrict behaves like process, but throws BatchRejectedException at the first rejected claim. Both validation failures and unexpected runtime failures stop the batch.\n- Null claims are still ignored. A fully valid batch returns a Report with rejected 0.\n- process must keep working exactly as before.",
+    "starterCode": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.List;\nimport java.util.Objects;\n\npublic final class ClaimBatchProcessor {\n\n    public record Claim(String id, String policyNumber, BigDecimal amount) {\n    }\n\n    public record Outcome(String claimId, boolean accepted, String reason) {\n    }\n\n    public record Report(int accepted, int rejected, List<Outcome> outcomes) {\n    }\n\n    public static final class ClaimValidationException extends Exception {\n        private final String claimId;\n\n        public ClaimValidationException(String claimId, String message) {\n            super(message);\n            this.claimId = claimId;\n        }\n\n        public String getClaimId() {\n            return claimId;\n        }\n    }\n\n    public interface ClaimRule {\n        void check(Claim claim) throws ClaimValidationException;\n    }\n\n    private final List<ClaimRule> rules;\n\n    public ClaimBatchProcessor(List<ClaimRule> rules) {\n        this.rules = List.copyOf(Objects.requireNonNull(rules, \"rules\"));\n    }\n\n    public static ClaimRule requiredPolicy() {\n        return claim -> {\n            if (claim.policyNumber() == null || claim.policyNumber().isBlank()) {\n                throw new ClaimValidationException(claim.id(), \"policy number is required\");\n            }\n        };\n    }\n\n    public static ClaimRule positiveAmount() {\n        return claim -> {\n            if (claim.amount() == null || claim.amount().signum() <= 0) {\n                throw new ClaimValidationException(claim.id(), \"amount must be positive\");\n            }\n        };\n    }\n\n    public Report process(List<Claim> claims) {\n        List<Outcome> outcomes = new ArrayList<>();\n        int accepted = 0;\n        int rejected = 0;\n        if (claims != null) {\n            for (Claim claim : claims) {\n                if (claim == null) {\n                    continue;\n                }\n                try {\n                    for (ClaimRule rule : rules) {\n                        rule.check(claim);\n                    }\n                    outcomes.add(new Outcome(claim.id(), true, \"accepted\"));\n                    accepted += 1;\n                } catch (ClaimValidationException error) {\n                    outcomes.add(new Outcome(claim.id(), false, error.getMessage()));\n                    rejected += 1;\n                } catch (RuntimeException error) {\n                    String message = error.getMessage() == null\n                            ? error.getClass().getSimpleName() : error.getMessage();\n                    outcomes.add(new Outcome(claim.id(), false, \"unexpected: \" + message));\n                    rejected += 1;\n                }\n            }\n        }\n        return new Report(accepted, rejected, List.copyOf(outcomes));\n    }\n\n    public static final class BatchRejectedException extends RuntimeException {\n        private final String claimId;\n        private final List<Outcome> acceptedSoFar;\n\n        public BatchRejectedException(String claimId, List<Outcome> acceptedSoFar) {\n            super(\"Batch rejected at claim \" + claimId);\n            this.claimId = claimId;\n            this.acceptedSoFar = List.copyOf(acceptedSoFar);\n        }\n\n        public String getClaimId() {\n            return claimId;\n        }\n\n        public List<Outcome> getAcceptedSoFar() {\n            return acceptedSoFar;\n        }\n    }\n\n    public Report processStrict(List<Claim> claims) {\n        // TODO: behave like process, but throw BatchRejectedException at the first rejected\n        // claim, carrying its claim id and the accepted outcomes collected before it.\n        // Null claims are still ignored. A validation failure and an unexpected runtime\n        // failure both stop the batch.\n        return new Report(0, 0, List.of());\n    }\n}\n",
+    "fileName": "ClaimBatchProcessor.java",
+    "hiddenTests": [
+      {
+        "name": "strict mode returns a report when everything passes",
+        "className": "StrictAllValidTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class StrictAllValidTest {\n    public static void main(String[] args) {\n        var processor = new ClaimBatchProcessor(List.of(\n                ClaimBatchProcessor.requiredPolicy(), ClaimBatchProcessor.positiveAmount()));\n        var report = processor.processStrict(List.of(\n                new ClaimBatchProcessor.Claim(\"C-1\", \"AB-123456\", new BigDecimal(\"100\")),\n                new ClaimBatchProcessor.Claim(\"C-2\", \"CD-999999\", new BigDecimal(\"200\"))));\n        TestSupport.eq(2, report.accepted(), \"strict accepted count\");\n        TestSupport.eq(0, report.rejected(), \"strict rejected count\");\n        TestSupport.eq(2, report.outcomes().size(), \"strict outcome count\");\n        System.out.println(\"PASS: strict mode returns a report when everything passes\");\n    }\n}\n"
+      },
+      {
+        "name": "strict mode aborts on the first rejection",
+        "className": "StrictStopsAtFirstFailureTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class StrictStopsAtFirstFailureTest {\n    public static void main(String[] args) {\n        var processor = new ClaimBatchProcessor(List.of(ClaimBatchProcessor.requiredPolicy()));\n        var claims = List.of(\n                new ClaimBatchProcessor.Claim(\"C-1\", \"AB-123456\", new BigDecimal(\"100\")),\n                new ClaimBatchProcessor.Claim(\"C-2\", \" \", new BigDecimal(\"100\")),\n                new ClaimBatchProcessor.Claim(\"C-3\", \"CD-999999\", new BigDecimal(\"100\")));\n        var error = TestSupport.throwsType(ClaimBatchProcessor.BatchRejectedException.class,\n                () -> processor.processStrict(claims), \"strict mode must abort\");\n        TestSupport.eq(\"C-2\", error.getClaimId(), \"failing claim id\");\n        TestSupport.eq(1, error.getAcceptedSoFar().size(), \"accepted outcomes before failure\");\n        TestSupport.eq(\"C-1\", error.getAcceptedSoFar().get(0).claimId(), \"accepted outcome id\");\n        TestSupport.check(error.getMessage().contains(\"C-2\"), \"message must name the failing claim\");\n        System.out.println(\"PASS: strict mode aborts on the first rejection\");\n    }\n}\n"
+      },
+      {
+        "name": "strict mode aborts on an unexpected runtime failure",
+        "className": "StrictUnexpectedRuntimeTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class StrictUnexpectedRuntimeTest {\n    public static void main(String[] args) {\n        ClaimBatchProcessor.ClaimRule boom = claim -> {\n            throw new IllegalStateException(\"boom\");\n        };\n        var processor = new ClaimBatchProcessor(List.of(boom));\n        var claims = List.of(new ClaimBatchProcessor.Claim(\"C-7\", \"AB-123456\", new BigDecimal(\"100\")));\n        var error = TestSupport.throwsType(ClaimBatchProcessor.BatchRejectedException.class,\n                () -> processor.processStrict(claims), \"strict mode must abort on runtime failure\");\n        TestSupport.eq(\"C-7\", error.getClaimId(), \"runtime failure claim id\");\n        TestSupport.eq(0, error.getAcceptedSoFar().size(), \"no accepted outcomes\");\n        System.out.println(\"PASS: strict mode aborts on an unexpected runtime failure\");\n    }\n}\n"
+      },
+      {
+        "name": "strict mode has an empty accepted list when the first claim fails",
+        "className": "StrictFirstFailureTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class StrictFirstFailureTest {\n    public static void main(String[] args) {\n        var processor = new ClaimBatchProcessor(List.of(ClaimBatchProcessor.requiredPolicy()));\n        var claims = List.of(\n                new ClaimBatchProcessor.Claim(\"C-1\", \" \", new BigDecimal(\"100\")),\n                new ClaimBatchProcessor.Claim(\"C-2\", \"AB-123456\", new BigDecimal(\"100\")));\n        var error = TestSupport.throwsType(ClaimBatchProcessor.BatchRejectedException.class,\n                () -> processor.processStrict(claims), \"strict mode must abort\");\n        TestSupport.eq(\"C-1\", error.getClaimId(), \"first claim id\");\n        TestSupport.check(error.getAcceptedSoFar().isEmpty(), \"accepted list must be empty\");\n        System.out.println(\"PASS: strict mode has an empty accepted list when the first claim fails\");\n    }\n}\n"
+      },
+      {
+        "name": "strict mode ignores null claims",
+        "className": "StrictNullClaimsTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class StrictNullClaimsTest {\n    public static void main(String[] args) {\n        var processor = new ClaimBatchProcessor(List.of(ClaimBatchProcessor.requiredPolicy()));\n        var report = processor.processStrict(java.util.Arrays.asList(\n                null,\n                new ClaimBatchProcessor.Claim(\"C-1\", \"AB-123456\", new BigDecimal(\"100\")),\n                null));\n        TestSupport.eq(1, report.accepted(), \"accepted count\");\n        TestSupport.eq(1, report.outcomes().size(), \"outcome count\");\n        System.out.println(\"PASS: strict mode ignores null claims\");\n    }\n}\n"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 30,
+      "criterion": "Batch processing passes the hidden suite",
+      "strongAnswer": "Accepts valid claims, distinguishes validation from unexpected failures, preserves order, and ignores null claims."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "Strict mode passes the hidden suite",
+      "strongAnswer": "Fail-fast mode throws with the failing claim id and the accepted outcomes so far, while the normal mode stays unchanged."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Clarified failure semantics before designing",
+      "strongAnswer": "Asked how rules signal errors, how runtime bugs are contained, and what the strict mode must carry."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Worked independently",
+      "strongAnswer": "Designed the report and exception flow with little or no hinting."
+    },
+    {
+      "id": "efficiency",
+      "type": "efficiency",
+      "weight": 10,
+      "criterion": "Worked within the phase budget",
+      "strongAnswer": "Delivered both modes without duplicating so much logic that the change became fragile."
+    }
+  ],
+  "referenceSolution": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.List;\nimport java.util.Objects;\n\npublic final class ClaimBatchProcessor {\n\n    public record Claim(String id, String policyNumber, BigDecimal amount) {\n    }\n\n    public record Outcome(String claimId, boolean accepted, String reason) {\n    }\n\n    public record Report(int accepted, int rejected, List<Outcome> outcomes) {\n    }\n\n    public static final class ClaimValidationException extends Exception {\n        private final String claimId;\n\n        public ClaimValidationException(String claimId, String message) {\n            super(message);\n            this.claimId = claimId;\n        }\n\n        public String getClaimId() {\n            return claimId;\n        }\n    }\n\n    public interface ClaimRule {\n        void check(Claim claim) throws ClaimValidationException;\n    }\n\n    private final List<ClaimRule> rules;\n\n    public ClaimBatchProcessor(List<ClaimRule> rules) {\n        this.rules = List.copyOf(Objects.requireNonNull(rules, \"rules\"));\n    }\n\n    public static ClaimRule requiredPolicy() {\n        return claim -> {\n            if (claim.policyNumber() == null || claim.policyNumber().isBlank()) {\n                throw new ClaimValidationException(claim.id(), \"policy number is required\");\n            }\n        };\n    }\n\n    public static ClaimRule positiveAmount() {\n        return claim -> {\n            if (claim.amount() == null || claim.amount().signum() <= 0) {\n                throw new ClaimValidationException(claim.id(), \"amount must be positive\");\n            }\n        };\n    }\n\n    public Report process(List<Claim> claims) {\n        List<Outcome> outcomes = new ArrayList<>();\n        int accepted = 0;\n        int rejected = 0;\n        if (claims != null) {\n            for (Claim claim : claims) {\n                if (claim == null) {\n                    continue;\n                }\n                try {\n                    for (ClaimRule rule : rules) {\n                        rule.check(claim);\n                    }\n                    outcomes.add(new Outcome(claim.id(), true, \"accepted\"));\n                    accepted += 1;\n                } catch (ClaimValidationException error) {\n                    outcomes.add(new Outcome(claim.id(), false, error.getMessage()));\n                    rejected += 1;\n                } catch (RuntimeException error) {\n                    String message = error.getMessage() == null\n                            ? error.getClass().getSimpleName() : error.getMessage();\n                    outcomes.add(new Outcome(claim.id(), false, \"unexpected: \" + message));\n                    rejected += 1;\n                }\n            }\n        }\n        return new Report(accepted, rejected, List.copyOf(outcomes));\n    }\n\n    public static final class BatchRejectedException extends RuntimeException {\n        private final String claimId;\n        private final List<Outcome> acceptedSoFar;\n\n        public BatchRejectedException(String claimId, List<Outcome> acceptedSoFar) {\n            super(\"Batch rejected at claim \" + claimId);\n            this.claimId = claimId;\n            this.acceptedSoFar = List.copyOf(acceptedSoFar);\n        }\n\n        public String getClaimId() {\n            return claimId;\n        }\n\n        public List<Outcome> getAcceptedSoFar() {\n            return acceptedSoFar;\n        }\n    }\n\n    public Report processStrict(List<Claim> claims) {\n        List<Outcome> acceptedOutcomes = new ArrayList<>();\n        if (claims != null) {\n            for (Claim claim : claims) {\n                if (claim == null) {\n                    continue;\n                }\n                try {\n                    for (ClaimRule rule : rules) {\n                        rule.check(claim);\n                    }\n                    acceptedOutcomes.add(new Outcome(claim.id(), true, \"accepted\"));\n                } catch (ClaimValidationException error) {\n                    throw new BatchRejectedException(claim.id(), acceptedOutcomes);\n                } catch (RuntimeException error) {\n                    throw new BatchRejectedException(claim.id(), acceptedOutcomes);\n                }\n            }\n        }\n        return new Report(acceptedOutcomes.size(), 0, List.copyOf(acceptedOutcomes));\n    }\n}\n"
+}

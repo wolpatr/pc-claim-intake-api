@@ -105,7 +105,7 @@ Add a JSON file under `interview-sim/scenarios/`. Required fields:
 - `id`, `title`, `tagline`, `difficulty`, `topics`
 - `phaseTimes`: minutes for `brief`, `implement`, `test`, `change`, `debrief`
 - `intro`, `problemStatement` (Markdown), `starterCode`, `fileName`
-- `examples`, `clarifyingQuestions` (with `keywords`, `answer`, `coach`), `clarifyingFallback`
+- `examples`, `clarifyingQuestions` (with `id`, `topic`, `question`, `keywords`, `answer`, `coach`), `clarifyingFallback`
 - `probes` (`atMinute`, `phase`, `text`), `fallbackProbe`
 - `phasePrompts` for all five phases
 - `hints`: exactly three, in nudge, direction, near-answer order
@@ -129,7 +129,7 @@ Run the validator before reporting a scenario as done:
 node interview-sim/validate.mjs
 ```
 
-It checks the schema, unique ids, non-empty rubrics, that every starter and change starter compiles with its tests, and that every reference solution passes both hidden suites.
+It checks the schema, unique ids, non-empty rubrics, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, that every starter and change starter compiles with its tests, and that every reference solution passes both hidden suites.
 
 ## Progress and history
 

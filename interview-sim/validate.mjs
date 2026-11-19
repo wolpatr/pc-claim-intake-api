@@ -1,6 +1,7 @@
 import { loadScenarios, roundTypeOf } from './lib/scenarios.mjs';
 import { matchClarifying } from './lib/ai.mjs';
 import { compileOnly, detectJdk, runSubmission } from './lib/java.mjs';
+import { criterionThreshold, keywordCoverage } from './public/scoring.mjs';
 
 const failures = [];
 const checks = [];
@@ -160,6 +161,22 @@ function validateDesignScenario(scenario, problems) {
   }
   const notes = (scenario.rubric || []).filter((item) => item.type === 'notes');
   if (!notes.length) problems.push('a design round needs at least one notes rubric criterion');
+  for (const item of scenario.rubric || []) {
+    if (!Array.isArray(item.keywords) || item.keywords.length === 0) continue;
+    const threshold = criterionThreshold(item.type);
+    const strong = keywordCoverage(item.strongAnswer, item.keywords);
+    if (strong.value < threshold) {
+      problems.push(
+        `rubric ${item.id} strongAnswer matches ${strong.matched}/${strong.total} keywords, needs ${threshold}`,
+      );
+    }
+    const reference = keywordCoverage(scenario.referenceDesign, item.keywords);
+    if (reference.value < threshold) {
+      problems.push(
+        `rubric ${item.id} referenceDesign matches ${reference.matched}/${reference.total} keywords, needs ${threshold}`,
+      );
+    }
+  }
 }
 
 function validateSchema(scenario) {

@@ -1,3 +1,5 @@
+import { criterionThreshold, keywordCoverage } from './scoring.mjs';
+
 const PHASE_SETS = {
   coding: [
     { key: 'brief', label: 'Brief & Clarify', short: 'Brief' },
@@ -231,37 +233,6 @@ function roundTypeLabel(roundType) {
   return 'Coding';
 }
 
-function stemToken(word) {
-  if (word.length > 4 && word.endsWith('ing')) return word.slice(0, -3);
-  if (word.length > 4 && word.endsWith('ed')) return word.slice(0, -2);
-  if (word.length > 3 && word.endsWith('ies')) return `${word.slice(0, -3)}y`;
-  if (word.length > 4 && /(?:ss|us|is|x|z|ch|sh)es$/.test(word)) return word.slice(0, -2);
-  if (word.length > 3 && word.endsWith('s') && !/(?:ss|us|is)$/.test(word)) return word.slice(0, -1);
-  return word;
-}
-
-function normalizeEvidence(text) {
-  return String(text || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean)
-    .map(stemToken)
-    .join(' ');
-}
-
-function keywordCoverage(text, keywords = []) {
-  const haystack = ` ${normalizeEvidence(text)} `;
-  const list = (keywords || []).map((keyword) => normalizeEvidence(keyword)).filter(Boolean);
-  if (!normalizeEvidence(text) || !list.length) return { matched: 0, total: list.length, value: 0 };
-  let matched = 0;
-  for (const keyword of list) {
-    if (haystack.includes(` ${keyword} `)) matched += 1;
-  }
-  return { matched, total: list.length, value: matched / list.length };
-}
-
 function totalPhaseMinutes(phaseTimes) {
   return Object.values(phaseTimes).reduce((sum, value) => sum + Number(value || 0), 0);
 }
@@ -402,8 +373,8 @@ function openBriefing(scenario) {
   startBtn.textContent = state.jdk?.available || design ? 'Start session' : 'Install a JDK first';
   $('briefJdkNote').textContent = design
     ? (state.jdk?.available
-      ? `Detected ${state.jdk.version} via ${state.jdk.source}. A class sketch is compiled as a bonus signal; design notes are enough.`
-      : 'Design rounds need no JDK. Write design notes or a class sketch; a compiled sketch is a bonus signal when a JDK is present.')
+      ? `Detected ${state.jdk.version} via ${state.jdk.source}. A class sketch is compiled as an informational signal; design notes are enough.`
+      : 'Design rounds need no JDK. Write design notes or a class sketch; a compiled sketch is informational only and does not affect the score.')
     : (state.jdk?.available
       ? `Detected ${state.jdk.version} via ${state.jdk.source}. Code is compiled with --release 17.`
       : 'No JDK detected. Follow the install steps on the previous screen, then restart the simulator.');
@@ -486,7 +457,7 @@ function startSession(scenario, minutes) {
 
   $('chatLog').innerHTML = '';
   $('consoleOutput').innerHTML = scenario.roundType === 'design'
-    ? '<p class="muted">Design notes do not need to compile. Press Check sketch to test an optional class sketch.</p>'
+    ? '<p class="muted">Design notes do not need to compile. Press Check sketch to compile an optional class sketch; the result is informational.</p>'
     : '<p class="muted">Run the tests to see compile output and per-test results.</p>';
   $('consoleStatus').textContent = 'Not run yet';
   $('clarifyInput').value = '';
@@ -861,11 +832,15 @@ async function runTests() {
     else state.baseRun = result;
     renderConsole(result, set);
     if (design) {
-      addMessage('interviewer', result.compiled
-        ? 'Your class sketch compiles. That is a bonus signal, not a requirement for this round.'
-        : 'The sketch did not compile. Design notes are still valid; only a compiling sketch earns the bonus.', {
-        meta: 'Sketch check',
-      });
+      let message;
+      if (!result.available) {
+        message = 'No JDK is available, so the optional class sketch cannot be checked. Your design notes are still valid.';
+      } else if (result.compiled) {
+        message = 'Your class sketch compiles. This is informational only and does not affect your score.';
+      } else {
+        message = 'The sketch did not compile. Design notes are still valid; the sketch result is informational and does not affect your score.';
+      }
+      addMessage('interviewer', message, { meta: 'Sketch check' });
     } else if (!result.compiled) {
       addMessage('interviewer', 'The build failed. Read the compiler output in the console; fix the first error before chasing the rest.', {
         meta: 'Test run',
@@ -910,14 +885,14 @@ function renderConsole(result, set) {
     const head = document.createElement('p');
     head.className = 'run-head';
     head.textContent = result.compiled
-      ? 'Sketch check: compiled (bonus signal)'
+      ? 'Sketch check: compiled (informational)'
       : 'Sketch check: did not compile (design notes are still valid)';
     output.appendChild(head);
     const detail = document.createElement('pre');
     detail.className = result.compiled ? 'test-detail ok' : 'test-detail';
     detail.textContent = result.compileOutput;
     output.appendChild(detail);
-    $('consoleStatus').textContent = result.compiled ? 'Sketch compiled · bonus' : 'Notes only · no bonus';
+    $('consoleStatus').textContent = result.compiled ? 'Sketch compiled · informational' : 'Notes only · sketch not compiled';
     return;
   }
 
@@ -993,7 +968,7 @@ function summarizeRun(result) {
       passed: 0,
       total: 0,
       compiled: Boolean(result.compiled),
-      bonus: Boolean(result.bonus),
+      available: Boolean(result.available),
       design: true,
     };
   }
@@ -1025,14 +1000,12 @@ function scoreSession() {
   const totalElapsed = scoredPhases.reduce((sum, key) => sum + (state.elapsed[key] || 0), 0);
   const over = Math.max(0, totalElapsed - totalBudget);
   const efficiency = totalBudget > 0 ? Math.max(0, 1 - over / totalBudget) : 0;
-  const sketchRatio = state.baseRun?.bonus ? 1 : 0;
   const sources = {
     tests: baseRatio,
     change: changeRatio,
     clarify: clarifyRatio,
     hints: hintRatio,
     efficiency,
-    sketch: sketchRatio,
   };
   const evidence = designEvidenceText();
   const diagnosis = diagnosisEvidenceText();
@@ -1049,7 +1022,7 @@ function scoreSession() {
     } else {
       value = sources[item.type] ?? 0;
     }
-    const threshold = item.type === 'notes' || item.type === 'diagnosis' ? 0.6 : 0.75;
+    const threshold = criterionThreshold(item.type);
     return {
       ...item,
       value,
@@ -1077,7 +1050,6 @@ function scoreSession() {
     diagnosis: state.scenario.roundType === 'debugging'
       ? keywordCoverage(diagnosis, state.scenario.diagnosis?.keywords || [])
       : null,
-    sketchCompiled: Boolean(state.baseRun?.bonus),
   };
 }
 
@@ -1087,7 +1059,6 @@ function buildSummary(scoring) {
     score: scoring.score,
     grade: scoring.grade,
     tests: { base: summarizeRun(state.baseRun), change: summarizeRun(state.changeRun) },
-    sketchCompiled: scoring.sketchCompiled,
     diagnosis: scoring.diagnosis,
     hintsUsed: state.hints.length,
     missed: scoring.missed,
@@ -1143,7 +1114,7 @@ async function openDebrief() {
     state.debriefPrompted = true;
     addMessage('interviewer', state.scenario.phasePrompts.debrief, { meta: 'Debrief' });
     addMessage('system', design
-      ? 'Checking whether the class sketch compiles as a bonus signal, then scoring the design rubric.'
+      ? 'Checking whether the class sketch compiles (informational), then scoring the design rubric.'
       : 'Running the hidden tests against your final code, then scoring the rubric.');
   }
 
@@ -1202,7 +1173,6 @@ async function openDebrief() {
       coverage: item.coverage ? { matched: item.coverage.matched, total: item.coverage.total } : null,
     })),
     missed: scoring.missed,
-    sketchCompiled: scoring.sketchCompiled,
     diagnosis: scoring.diagnosis,
     tests: summary.tests,
     phaseSeconds: state.elapsed,
@@ -1266,9 +1236,13 @@ function renderDebrief(scoring, summary, narrative) {
     </div>`;
   }).join('');
 
+  const sketchStatus = summary.tests.base.available === false
+    ? 'not checked (no JDK)'
+    : summary.tests.base.compiled ? 'compiled' : 'did not compile';
+
   const testsHtml = design
-    ? `<div class="metric-row"><span>Sketch compile</span><span>${summary.tests.base.compiled ? 'compiled (bonus)' : 'notes only (no bonus)'}</span></div>
-       <p class="muted">Design notes never need to compile. A compiled class sketch is only a bonus signal.</p>`
+    ? `<div class="metric-row"><span>Sketch compile (informational)</span><span>${sketchStatus}</span></div>
+       <p class="muted">Design notes never need to compile. The sketch result is informational and does not affect the score.</p>`
     : [
         renderTestSummary('Base tests', summary.tests.base, state.baseRun),
         state.scenario.changeRequest
@@ -1277,7 +1251,7 @@ function renderDebrief(scoring, summary, narrative) {
       ].join('');
 
   const evidenceLine = design
-    ? `${roundTypeLabel(state.scenario.roundType)} round · sketch ${summary.tests.base.compiled ? 'compiled (bonus)' : 'not compiled (notes only)'} · ${state.hints.length} hint${state.hints.length === 1 ? '' : 's'} used · ${state.clarify.asked} clarifying question${state.clarify.asked === 1 ? '' : 's'}.`
+    ? `${roundTypeLabel(state.scenario.roundType)} round · sketch ${sketchStatus} (informational) · ${state.hints.length} hint${state.hints.length === 1 ? '' : 's'} used · ${state.clarify.asked} clarifying question${state.clarify.asked === 1 ? '' : 's'}.`
     : debugging
       ? `Base tests ${summary.tests.base.passed}/${summary.tests.base.total} · diagnosis ${scoring.diagnosis?.matched ?? 0}/${scoring.diagnosis?.total ?? 0} signals · change tests ${summary.tests.change.passed}/${summary.tests.change.total} · ${state.hints.length} hint${state.hints.length === 1 ? '' : 's'} used.`
       : `Base tests ${summary.tests.base.passed}/${summary.tests.base.total} · change tests ${summary.tests.change.passed}/${summary.tests.change.total} · ${state.hints.length} hint${state.hints.length === 1 ? '' : 's'} used · ${state.clarify.asked} clarifying question${state.clarify.asked === 1 ? '' : 's'}.`;
@@ -1324,7 +1298,6 @@ function renderDebrief(scoring, summary, narrative) {
           ${phaseRows}
           <div class="metric-row"><span>Hints used</span><span>${escapeHtml(hintText)}</span></div>
           <div class="metric-row"><span>Probes seen</span><span>${summary.probesFired}</span></div>
-          ${design ? `<div class="metric-row"><span>Sketch compile bonus</span><span>${summary.tests.base.compiled ? 'earned' : 'not earned'}</span></div>` : ''}
           <div class="metric-row"><span>Phase time total</span><span>${duration(Object.values(state.elapsed).reduce((sum, value) => sum + value, 0))}</span></div>
         </div>
       </div>
@@ -1400,14 +1373,12 @@ function retryScenario() {
   if (!state.scenario) return;
   const scenario = state.scenario;
   const minutes = { ...state.minutes };
-  $('debriefDialog').close();
   startSession(scenario, minutes);
 }
 
 function startRecommended() {
   const next = recommendNext();
   if (!next) return;
-  $('debriefDialog').close();
   startSession(next, next.phaseTimes);
 }
 
@@ -1454,7 +1425,9 @@ function renderHistory(records) {
     const tests = record.tests || {};
     const base = tests.base ? `${tests.base.passed}/${tests.base.total}` : '-';
     const change = tests.change ? `${tests.change.passed}/${tests.change.total}` : '-';
-    const testsCell = record.roundType === 'design' ? (tests.base?.compiled ? 'sketch compiled' : 'notes only') : `${base} / ${change}`;
+    const testsCell = record.roundType === 'design'
+      ? (tests.base?.available === false ? 'sketch not checked' : tests.base?.compiled ? 'sketch compiled' : 'notes only')
+      : `${base} / ${change}`;
     return `<tr>
       <td>${escapeHtml(when)}</td>
       <td>${escapeHtml(roundTypeLabel(record.roundType))}</td>

@@ -298,7 +298,7 @@ function fallbackNarrative(summary, scenario = {}) {
   const parts = [];
   if (roundType === 'design') {
     parts.push(
-      `You finished the design round with a score of ${score}/100. ${summary?.sketchCompiled ? 'Your class sketch compiled, which is a bonus signal.' : 'Your sketch did not need to compile for this round.'}`,
+      `You finished the design round with a score of ${score}/100. ${summary?.tests?.base?.compiled ? 'Your class sketch compiled; this is informational and does not change the score.' : 'Your sketch did not need to compile for this round.'}`,
     );
     parts.push(
       `The debrief scored your design notes and spoken answers against structure, separation of responsibilities, interfaces, extensibility, and stated trade-offs. Use the reference design to compare the boundaries you chose.`,

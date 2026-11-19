@@ -174,12 +174,12 @@
       "criterion": "Separation of responsibilities",
       "strongAnswer": "The engine owns orchestration and precedence; rules own evaluation; audit owns recording; each type has one reason to change.",
       "keywords": [
-        "orchestration",
-        "precedence",
-        "evaluation",
+        "engine",
+        "rule",
+        "audit",
         "recording",
-        "single responsibility",
-        "separation"
+        "precedence",
+        "collaborator"
       ]
     },
     {
@@ -203,13 +203,12 @@
       "criterion": "Extensibility",
       "strongAnswer": "A new rule is a new implementation registered with the engine; the engine loop and existing rules stay unchanged.",
       "keywords": [
-        "new rule",
-        "add",
-        "registering",
-        "without changing",
-        "extension",
-        "pluggable",
-        "implementing"
+        "implementation",
+        "registered",
+        "engine",
+        "loop",
+        "factory",
+        "unchanged"
       ]
     },
     {
@@ -219,10 +218,12 @@
       "criterion": "Stated trade-offs",
       "strongAnswer": "Explains the cost of explicit precedence, the choice of a small type set, and what was deliberately left out.",
       "keywords": [
-        "trade off",
-        "tradeoff",
-        "complexity",
-        "because",
+        "explicit",
+        "precedence",
+        "small",
+        "type set",
+        "deliberately",
+        "left out",
         "cost",
         "auditable"
       ]

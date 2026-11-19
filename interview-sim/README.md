@@ -4,14 +4,14 @@ A local, single-page interview preparation system for Java practice. Every round
 
 - **coding** - brief and clarify, implement from starter code, run hidden tests, absorb a change request, then debrief. This is the version 1 round.
 - **debugging** - brief and reproduce, diagnose the defect, fix and verify against failing tests, harden with a second change, then debrief. A root-cause note is scored separately from the fix.
-- **design** - brief and clarify, write object-oriented design notes or a class sketch, review the sketch, answer a constraint change, then debrief against a reference design. Java execution is not required, but a compiling class sketch is reported as a bonus signal.
+- **design** - brief and clarify, write object-oriented design notes or a class sketch, review the sketch, answer a constraint change, then debrief against a reference design. Java execution is not required; whether the class sketch compiles is reported as informational and does not affect the score.
 
 Every scenario declares a `roundType`; version 1 scenarios that omit it default to `coding`. The interviewer is a scripted scenario spine with an optional AI layer. Without an API key everything still works offline.
 
 ## Requirements
 
 - Node.js 24 (the code uses only the standard library; there are no npm dependencies).
-- A JDK 17 or newer for coding and debugging rounds. The simulator compiles with `javac --release 17`. Design rounds run without a JDK; a detected JDK only enables the optional sketch-compile bonus.
+- A JDK 17 or newer for coding and debugging rounds. The simulator compiles with `javac --release 17`. Design rounds run without a JDK; a detected JDK only enables the optional sketch-compile check, whose result is informational.
 
 ## Start
 
@@ -81,7 +81,7 @@ Privacy note: when AI is enabled, the clarifying question, the current editor co
 - `Request hint` returns three graded hints: nudge, then direction, then near-answer. Every hint is recorded for scoring.
 - `Run tests` compiles and runs the hidden suite for the current phase. Test output is shown in the console.
 - In debugging rounds, the root-cause note above the console records your diagnosis in your own words and is scored separately from the fix.
-- In design rounds, `Check sketch (optional)` compiles the editor contents as a bonus signal. Design notes do not need to compile, and the round runs without a JDK.
+- In design rounds, `Check sketch (optional)` compiles the editor contents and reports the result as informational. Design notes do not need to compile, the sketch does not affect the score, and the round runs without a JDK.
 
 ## Scenarios
 
@@ -149,7 +149,7 @@ Test protocol:
 
 - Each hidden test is a Java file whose public class name matches `className` and contains `public static void main(String[] args)`.
 - Exit code 0 means pass. Throw `AssertionError` with a useful message to fail.
-- The shared `TestSupport` class provides `eq`, `check`, `near`, `money`, and `throwsType`.
+- Every scenario's shared `TestSupport` class provides `eq`, `check`, `near`, and `throwsType`. The claim-payment-allocation, claim-deductible-debug, claim-duplicate-detection, and java-lru-cache-debug scenarios also provide `money`.
 - Tests must be deterministic, must not touch the network or the clock where avoidable, and must not rely on file system state.
 - The candidate file and all test files compile together with `javac --release 17`.
 
@@ -159,11 +159,11 @@ Run the validator before reporting a scenario as done:
 node interview-sim/validate.mjs
 ```
 
-It checks the schema per round type, unique ids, non-empty rubrics and weights, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, the required scenario mix (at least 12 scenarios, 2 debugging and 2 design), that every code starter compiles and fails before completion, that each debugging regression test fails on the broken starter, and that every reference solution passes both hidden suites.
+It checks the schema per round type, unique ids, non-empty rubrics and weights, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, the required scenario mix (at least 12 scenarios, 2 debugging and 2 design), that every code starter compiles and fails before completion, that each debugging regression test fails on the broken starter, that every reference solution passes both hidden suites, and that each design criterion's strong answer and reference design clear its own evidence threshold.
 
 ## Progress and history
 
-A completed debrief appends one JSON record under `interview-sim/progress/` per session. That directory is gitignored; only `.gitkeep` is tracked. Each record carries the round type, rubric evidence, test results, and sketch bonus where relevant. The `History` button shows completed sessions, per-topic averages, and the weakest topics. Records stay on this machine.
+A completed debrief appends one JSON record under `interview-sim/progress/` per session. That directory is gitignored; only `.gitkeep` is tracked. Each record carries the round type, rubric evidence, test results, and sketch compile result where relevant. The `History` button shows completed sessions, per-topic averages, and the weakest topics. Records stay on this machine.
 
 ## Local-only and sandbox limitations
 

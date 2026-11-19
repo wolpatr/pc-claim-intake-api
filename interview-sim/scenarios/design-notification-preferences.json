@@ -170,13 +170,12 @@
       "criterion": "Separation of responsibilities",
       "strongAnswer": "The dispatcher orchestrates; channels deliver; preference and quiet-hours policy decide; dedupe checks identity. Each has one reason to change.",
       "keywords": [
-        "orchestration",
-        "delivery",
-        "decision",
-        "separation",
-        "single responsibility",
-        "policy",
-        "dedupe"
+        "dispatcher",
+        "channels",
+        "preference",
+        "dedupe",
+        "identity",
+        "policy"
       ]
     },
     {
@@ -188,7 +187,7 @@
       "keywords": [
         "interface",
         "contract",
-        "method",
+        "injected",
         "channel",
         "clock",
         "store"
@@ -201,13 +200,12 @@
       "criterion": "Extensibility",
       "strongAnswer": "A new channel is a new implementation registered or injected; the dispatcher core stays unchanged.",
       "keywords": [
-        "new channel",
-        "without changing",
-        "extension",
-        "pluggable",
-        "registering",
-        "implementing",
-        "open closed"
+        "channel",
+        "implementation",
+        "registered",
+        "dispatcher",
+        "unchanged",
+        "loop"
       ]
     },
     {
@@ -217,12 +215,13 @@
       "criterion": "Stated trade-offs",
       "strongAnswer": "Explains defer versus fallback, dedupe storage cost, and the cost of keeping the dispatcher thin.",
       "keywords": [
-        "trade off",
-        "tradeoff",
-        "complexity",
-        "because",
+        "dedupe",
+        "storage",
+        "dispatcher",
+        "thin",
         "cost",
-        "auditable"
+        "auditable",
+        "trade off"
       ]
     }
   ],

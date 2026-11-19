@@ -38,6 +38,7 @@ function isJsonContentType(request) {
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
@@ -156,7 +157,6 @@ async function handleApi(request, response, url) {
           design: true,
           available: false,
           compiled: false,
-          bonus: false,
           compileOutput: jdk.installSteps.join('\n'),
           results: [],
         });
@@ -168,7 +168,6 @@ async function handleApi(request, response, url) {
           design: true,
           available: true,
           compiled: false,
-          bonus: false,
           compileOutput: 'No class sketch was supplied; design notes do not need to compile.',
           results: [],
         });
@@ -180,7 +179,6 @@ async function handleApi(request, response, url) {
         design: true,
         available: true,
         compiled: compiled.ok,
-        bonus: compiled.ok,
         compileOutput: compiled.output,
         results: [],
       });

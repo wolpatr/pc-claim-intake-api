@@ -38,7 +38,9 @@ const state = {
   clarifyBusy: false,
   probeBusy: false,
   runBusy: false,
+  runEpoch: 0,
   progressSaved: false,
+  pendingRecord: null,
   sessionToken: 0,
   sessionId: null,
 };
@@ -356,7 +358,9 @@ function startSession(scenario, minutes) {
   state.clarifyBusy = false;
   state.probeBusy = false;
   state.runBusy = false;
+  state.runEpoch = 0;
   state.progressSaved = false;
+  state.pendingRecord = null;
   state.sessionToken += 1;
   state.sessionId = newSessionId();
 
@@ -517,7 +521,7 @@ function jumpToPhase(index) {
   if (!state.active) return;
   const target = Math.max(0, Math.min(PHASES.length - 1, index));
   if (target === state.phaseIndex) {
-    if (target === PHASES.length - 1 && state.debriefRendered) $('debriefDialog').showModal();
+    if (target === PHASES.length - 1) openDebrief();
     return;
   }
   state.phaseIndex = target;
@@ -711,6 +715,7 @@ function resetCode() {
 async function runTests() {
   if (state.runBusy || !state.scenario || currentPhase() === 'debrief') return;
   const token = state.sessionToken;
+  const epoch = state.runEpoch;
   const set = currentPhase() === 'change' ? 'change' : 'base';
   state.runBusy = true;
   $('runBtn').disabled = true;
@@ -725,7 +730,7 @@ async function runTests() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scenarioId: state.scenario.id, source: $('editor').value, phase: set }),
     });
-    if (token !== state.sessionToken) return;
+    if (token !== state.sessionToken || epoch !== state.runEpoch) return;
     if (set === 'change') state.changeRun = result;
     else state.baseRun = result;
     renderConsole(result, set);
@@ -740,7 +745,7 @@ async function runTests() {
       });
     }
   } catch (error) {
-    if (token !== state.sessionToken) return;
+    if (token !== state.sessionToken || epoch !== state.runEpoch) return;
     output.innerHTML = '';
     const failure = document.createElement('p');
     failure.className = 'compile-fail';
@@ -808,12 +813,12 @@ function renderConsole(result, set) {
   $('consoleStatus').textContent = `${label} · ${passed}/${result.results.length} passing`;
 }
 
-async function runFinal(set, token) {
+async function runFinal(set, token, source) {
   try {
     const result = await api('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scenarioId: state.scenario.id, source: $('editor').value, phase: set }),
+      body: JSON.stringify({ scenarioId: state.scenario.id, source, phase: set }),
     });
     return token === state.sessionToken ? result : null;
   } catch (error) {
@@ -889,14 +894,34 @@ function buildSummary(scoring) {
   };
 }
 
+async function saveProgress(token) {
+  if (state.progressSaved || !state.pendingRecord) return;
+  try {
+    const saved = await api('/api/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ record: state.pendingRecord }),
+    });
+    if (token !== state.sessionToken) return;
+    state.progress.unshift(saved.record);
+    state.pendingRecord = null;
+    state.progressSaved = true;
+  } catch (error) {
+    if (token === state.sessionToken) showToast(`Could not save progress: ${error.message}`);
+  }
+}
+
 async function openDebrief() {
   if (!state.active || state.debriefRunning) return;
   if (state.debriefRendered) {
     $('debriefDialog').showModal();
+    await saveProgress(state.sessionToken);
     return;
   }
   state.debriefRunning = true;
+  state.runEpoch += 1;
   const token = state.sessionToken;
+  const source = $('editor').value;
   state.running = false;
   state.phaseIndex = PHASES.length - 1;
   renderPhaseUI();
@@ -912,9 +937,9 @@ async function openDebrief() {
   $('debriefTitle').textContent = `${state.scenario.title} · debrief`;
   $('debriefDialog').showModal();
 
-  const base = await runFinal('base', token);
+  const base = await runFinal('base', token, source);
   if (token !== state.sessionToken) return;
-  const change = state.scenario.changeRequest ? await runFinal('change', token) : null;
+  const change = state.scenario.changeRequest ? await runFinal('change', token, source) : null;
   if (token !== state.sessionToken) return;
   state.baseRun = base;
   state.changeRun = change;
@@ -965,19 +990,8 @@ async function openDebrief() {
     aiNarrativeSource: narrative.source,
   };
 
-  if (!state.progressSaved) {
-    state.progressSaved = true;
-    try {
-      const saved = await api('/api/progress', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ record }),
-      });
-      if (token === state.sessionToken) state.progress.unshift(saved.record);
-    } catch (error) {
-      if (token === state.sessionToken) showToast(`Could not save progress: ${error.message}`);
-    }
-  }
+  state.pendingRecord = record;
+  await saveProgress(token);
   if (token !== state.sessionToken) return;
 
   renderDebrief(scoring, summary, narrative);

@@ -79,7 +79,8 @@ function normalizeText(text) {
 
 function singularize(word) {
   if (word.length > 3 && word.endsWith('ies')) return `${word.slice(0, -3)}y`;
-  if (word.length > 3 && word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
+  if (word.length > 4 && /(?:ss|us|is|x|z|ch|sh)es$/.test(word)) return word.slice(0, -2);
+  if (word.length > 3 && word.endsWith('s') && !/(?:ss|us|is)$/.test(word)) return word.slice(0, -1);
   return word;
 }
 

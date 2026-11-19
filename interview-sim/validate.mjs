@@ -11,6 +11,8 @@ const CLARIFY_PARAPHRASES = [
   { scenarioId: 'claim-status-transition', itemId: 'same', question: 'What about the same status?' },
   { scenarioId: 'claim-validation', itemId: 'clock', question: 'How do I test the date logic?' },
   { scenarioId: 'claim-status-transition', itemId: 'errors', question: 'What if the transition is invalid?' },
+  { scenarioId: 'claim-query-filter', itemId: 'expected', question: 'How are claim statuses handled?' },
+  { scenarioId: 'claim-status-transition', itemId: 'rules', question: 'How are claim statuses handled?' },
 ];
 
 function record(ok, label, detail = '') {

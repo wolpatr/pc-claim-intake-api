@@ -1,0 +1,236 @@
+{
+  "id": "design-claim-review-workflow",
+  "title": "Design a claim review workflow engine",
+  "tagline": "Structure rules, decisions, and audit around a review engine, then defend the boundaries and extension points.",
+  "difficulty": "Senior",
+  "roundType": "design",
+  "topics": [
+    "Claim domain",
+    "OOP design",
+    "Interfaces",
+    "Extensibility"
+  ],
+  "phaseTimes": {
+    "brief": 8,
+    "implement": 25,
+    "test": 5,
+    "change": 10,
+    "debrief": 12
+  },
+  "intro": "This round is object-oriented design, not coding. Claims move through automated review rules that approve, deny, or refer. I want your class sketch and your reasoning: responsibilities, interfaces, extension points, and the trade-offs you are choosing. Talk before you draw.",
+  "problemStatement": "### Context\n\nA claim review workflow evaluates a claim against a set of rules. Each rule can approve, deny, or refer the claim for manual review. Compliance needs an audit trail for every decision, and the business adds new rules frequently.\n\n### Your task\n\nSketch an object-oriented design in the editor: the key types, their responsibilities, the interfaces between them, and how a new rule is added. You do not need a full implementation.",
+  "fileName": "ClaimReviewDesign.java",
+  "starterCode": "Design notes\n\nOwnership:\n\nBoundaries:\n\nChange path:\n\nChoices:\n",
+  "testSupport": "",
+  "examples": [
+    {
+      "input": "a fraud rule denies a claim",
+      "output": "DENY with an audit entry naming the rule"
+    },
+    {
+      "input": "no rule fires",
+      "output": "a default REFER decision with an audit entry"
+    },
+    {
+      "input": "a new compliance rule is added",
+      "output": "new class implements the rule interface; engine untouched"
+    }
+  ],
+  "design": {
+    "prompt": "Design an extensible claim review workflow with explicit rule precedence and an audit trail.",
+    "constraints": [
+      "No external frameworks and no network access.",
+      "Inject the clock and avoid global state.",
+      "Add rule types without editing the engine.",
+      "Every decision carries an audit entry naming the rule.",
+      "Precedence is explicit and testable.",
+      "Keep the type count small enough to defend in an interview."
+    ],
+    "probingQuestions": [
+      {
+        "atMinute": 3,
+        "text": "What are the three or four core types, and which one owns orchestration?"
+      },
+      {
+        "atMinute": 8,
+        "text": "What does the rule interface take as input and return, and why is that the right boundary?"
+      },
+      {
+        "atMinute": 15,
+        "text": "How does a new rule get added without editing the engine, and what does it cost?"
+      },
+      {
+        "atMinute": 22,
+        "text": "What trade-off are you accepting between rule precedence and rule independence?"
+      }
+    ]
+  },
+  "clarifyingQuestions": [
+    {
+      "id": "precedence",
+      "topic": "Rule precedence",
+      "question": "If two rules disagree, which decision wins?",
+      "keywords": [
+        "precedence",
+        "disagree",
+        "wins",
+        "order",
+        "priority"
+      ],
+      "answer": "Precedence is explicit, configurable, and ordered. A deny from a higher-priority rule wins over an approve; a tie or an unresolved case becomes REFER. Do not rely on class-name or map iteration order.",
+      "coach": "Ask how conflicting rule outcomes are resolved before drawing the engine."
+    },
+    {
+      "id": "audit",
+      "topic": "Audit trail",
+      "question": "What has to be in the audit entry?",
+      "keywords": [
+        "audit",
+        "entry",
+        "explain",
+        "rule",
+        "decision"
+      ],
+      "answer": "Each audit entry records the claim id, the rule id, the decision, the reason, and the timestamp from the injected clock. Every outcome, including the default REFER, must be explainable.",
+      "coach": "Ask what compliance needs in the audit record before choosing an audit interface."
+    },
+    {
+      "id": "extension",
+      "topic": "Rule extension",
+      "question": "How should a new rule be added?",
+      "keywords": [
+        "new rule",
+        "add",
+        "extension",
+        "interface",
+        "without editing"
+      ],
+      "answer": "A new rule is a new class that implements the rule interface and is registered with the engine. The engine loop does not change.",
+      "coach": "Ask for the extension mechanism and whether the engine stays closed."
+    },
+    {
+      "id": "testability",
+      "topic": "Clock and testability",
+      "question": "How do we test time-dependent rules?",
+      "keywords": [
+        "clock",
+        "test",
+        "time",
+        "inject",
+        "deterministic"
+      ],
+      "answer": "Inject a clock or time source into the context. Rules read time from the context, never from LocalDate.now() or Instant.now() directly.",
+      "coach": "Ask how time is supplied to rules so tests stay deterministic."
+    },
+    {
+      "id": "change",
+      "topic": "Constraint change",
+      "question": "What constraint change should I plan for?",
+      "keywords": [
+        "constraint",
+        "change",
+        "fraud",
+        "mandatory",
+        "extension"
+      ],
+      "answer": "Expect a mandatory compliance rule that must run before any approval, plus a requirement that every decision be explainable. Your design should absorb that through ordering and the audit interface, not a new engine.",
+      "coach": "Ask what kind of extension the follow-up will demand."
+    }
+  ],
+  "clarifyingFallback": "Assume rules are ordered, the engine collects decisions and applies explicit precedence, the clock is injected, and every outcome is audited. State any missing assumption.",
+  "fallbackProbe": "Which type would you change first if compliance required a mandatory pre-check before every approval?",
+  "phasePrompts": {
+    "brief": "Read the problem and constraints. Ask the questions you would ask a design interviewer, then state your plan.",
+    "implement": "The design timer is running. Write the responsibilities and interfaces in the editor, and say the trade-offs out loud as you go.",
+    "test": "Review your sketch. Which responsibility is hardest to test, and what boundary would make it testable?",
+    "change": "Here is the constraint change. Explain how your design absorbs it and which interface changes, if any.",
+    "debrief": "Time is up. Let us compare your structure, responsibilities, interfaces, extensibility, and stated trade-offs with the reference design."
+  },
+  "hints": [
+    "Start from three nouns: the claim context, a rule, and a decision. Put orchestration in one engine and keep rules independent.",
+    "Make the rule return a small result object with a decision and a reason. Let the engine own precedence and audit so rules do not call each other.",
+    "For the constraint change, add a mandatory rule and an ordering policy, not a new engine branch. Explain the cost of stricter precedence."
+  ],
+  "rubric": [
+    {
+      "id": "structure",
+      "type": "notes",
+      "weight": 25,
+      "criterion": "Structure and core types",
+      "strongAnswer": "Names a small set of types with clear relationships: context, rule, result, decision, engine, and audit.",
+      "keywords": [
+        "context",
+        "rule",
+        "result",
+        "decision",
+        "engine",
+        "audit"
+      ]
+    },
+    {
+      "id": "responsibilities",
+      "type": "notes",
+      "weight": 20,
+      "criterion": "Separation of responsibilities",
+      "strongAnswer": "The engine owns orchestration and precedence; rules own evaluation; audit owns recording; each type has one reason to change.",
+      "keywords": [
+        "orchestration",
+        "precedence",
+        "evaluation",
+        "recording",
+        "single responsibility",
+        "separation"
+      ]
+    },
+    {
+      "id": "interfaces",
+      "type": "notes",
+      "weight": 20,
+      "criterion": "Interface choices",
+      "strongAnswer": "The rule interface takes an immutable context and returns a result; decisions and audit entries are explicit contracts rather than side effects.",
+      "keywords": [
+        "interface",
+        "result",
+        "context",
+        "returns",
+        "contract"
+      ]
+    },
+    {
+      "id": "extensibility",
+      "type": "notes",
+      "weight": 20,
+      "criterion": "Extensibility",
+      "strongAnswer": "A new rule is a new implementation registered with the engine; the engine loop and existing rules stay unchanged.",
+      "keywords": [
+        "new rule",
+        "add",
+        "registering",
+        "without changing",
+        "extension",
+        "pluggable",
+        "implementing"
+      ]
+    },
+    {
+      "id": "tradeoffs",
+      "type": "notes",
+      "weight": 15,
+      "criterion": "Stated trade-offs",
+      "strongAnswer": "Explains the cost of explicit precedence, the choice of a small type set, and what was deliberately left out.",
+      "keywords": [
+        "trade off",
+        "tradeoff",
+        "complexity",
+        "because",
+        "cost",
+        "auditable"
+      ]
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Compliance now requires a mandatory fraud rule before every approval.",
+    "statement": "### Constraint change\n\nCompliance adds two constraints:\n\n1. A mandatory fraud rule must run before any approval, regardless of registration order.\n2. Every decision must be explainable to an auditor, including a tie or a default.\n\nAnswer in your design notes: which type or interface changes, how precedence is enforced, and what trade-off you accept. This is a design extension, not a code delta."
+  },
+  "referenceDesign": "Reference design: claim review workflow\n\nCore types\n- ClaimReviewContext: immutable claim id, claim snapshot, injected Clock, and policy metadata.\n- ReviewRule: interface with String id() and RuleResult evaluate(ClaimReviewContext context).\n- RuleResult: decision (APPROVE, DENY, REFER), reason, and ruleId. No side effects.\n- ReviewEngine: owns the ordered rule list, runs rules, applies precedence, and returns ReviewDecision.\n- ReviewDecision: final decision plus the ordered audit entries.\n- AuditLog: interface with void record(AuditEntry entry); an in-memory implementation is enough for tests.\n- AuditEntry: claim id, rule id, decision, reason, and timestamp from the injected clock.\n\nResponsibilities\n- The engine orchestrates; it does not know concrete rule classes.\n- Each rule evaluates one policy concern and returns a result.\n- Precedence is a separate policy object (for example RulePrecedence) so it can be tested and swapped.\n- Audit recording is a collaborator, not a hidden side effect inside rules.\n\nInterfaces\n- ReviewRule takes a context and returns a result. This keeps rules pure and easy to test.\n- AuditLog is injectable; tests use a recording fake.\n- The clock lives in the context so time-dependent rules never call now().\n\nExtensibility\n- Add a rule by implementing ReviewRule and registering it with the engine or a factory.\n- Add a mandatory compliance rule by registering it with a \"before approvals\" ordering policy, not by editing the engine loop.\n- New decisions require extending the enum and the precedence policy, which is an explicit, reviewable change.\n\nTrade-offs\n- Explicit precedence is more complex than \"first rule wins\", but it is auditable and testable.\n- A small type set is easier to explain, but some orchestration logic lands in the engine; keep it thin.\n- In-memory audit is simple for tests, but a production audit sink would be another implementation of the same interface.\n- I deliberately left out workflow persistence: it is a separate concern and would dilute the design discussion."
+}

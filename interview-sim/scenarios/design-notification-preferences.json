@@ -1,0 +1,234 @@
+{
+  "id": "design-notification-preferences",
+  "title": "Design policyholder notification preferences",
+  "tagline": "Model channels, opt-ins, quiet hours, and fallbacks so new channels do not rewrite the dispatcher.",
+  "difficulty": "Senior",
+  "roundType": "design",
+  "topics": [
+    "Claim domain",
+    "OOP design",
+    "Strategy",
+    "Extensibility"
+  ],
+  "phaseTimes": {
+    "brief": 8,
+    "implement": 25,
+    "test": 5,
+    "change": 10,
+    "debrief": 12
+  },
+  "intro": "This round is object-oriented design. Policyholders choose how we contact them about claims: email, SMS, push, maybe more later. We need opt-ins per event, quiet hours, a fallback channel, and deduplication. Sketch the design and defend the boundaries.",
+  "problemStatement": "### Context\n\nA notification service decides whether and how to contact a policyholder about a claim event. Preferences include per-event opt-ins, channel choice, quiet hours, and a fallback channel.\n\n### Your task\n\nSketch the object-oriented design in the editor: types, responsibilities, interfaces, extension points, and trade-offs. You do not need a full implementation.",
+  "fileName": "NotificationDesign.java",
+  "starterCode": "Design notes\n\nOwnership:\n\nBoundaries:\n\nChange path:\n\nChoices:\n",
+  "testSupport": "",
+  "examples": [
+    {
+      "input": "policyholder opted into EMAIL for claim updates",
+      "output": "EMAIL is selected"
+    },
+    {
+      "input": "quiet hours are active",
+      "output": "defer or use the configured fallback, with a reason"
+    },
+    {
+      "input": "a new PUSH channel is added",
+      "output": "new channel implementation; dispatcher core unchanged"
+    }
+  ],
+  "design": {
+    "prompt": "Design an extensible policyholder notification preference and dispatch service.",
+    "constraints": [
+      "No external frameworks and no network access.",
+      "Inject the clock and avoid global state.",
+      "Add a new channel without editing the dispatcher core.",
+      "Deduplicate per policyholder and event.",
+      "Explain every dispatch decision.",
+      "Keep the type count small enough to defend in an interview."
+    ],
+    "probingQuestions": [
+      {
+        "atMinute": 3,
+        "text": "What are the core types, and which one decides versus which one delivers?"
+      },
+      {
+        "atMinute": 8,
+        "text": "What does the channel interface look like, and why should the dispatcher not know concrete channels?"
+      },
+      {
+        "atMinute": 15,
+        "text": "How do quiet hours and fallbacks compose without turning the preference object into a god object?"
+      },
+      {
+        "atMinute": 22,
+        "text": "How does deduplication work, and what trade-off does it impose on storage or idempotency?"
+      }
+    ]
+  },
+  "clarifyingQuestions": [
+    {
+      "id": "events",
+      "topic": "Events and opt-ins",
+      "question": "Which events need preferences, and are opt-ins per channel?",
+      "keywords": [
+        "events",
+        "opt-in",
+        "channel",
+        "preferences"
+      ],
+      "answer": "Start with CLAIM_UPDATE and PAYMENT_UPDATE. Opt-ins are per event and per channel, so a policyholder can choose email for payments but no SMS. Missing preferences mean no contact.",
+      "coach": "Ask which events exist and how granular opt-ins are before modelling preferences."
+    },
+    {
+      "id": "quiet",
+      "topic": "Quiet hours",
+      "question": "How should quiet hours and time zones work?",
+      "keywords": [
+        "quiet hours",
+        "time zone",
+        "clock",
+        "defer"
+      ],
+      "answer": "Quiet hours are evaluated in the policyholder time zone using the injected clock. When quiet, the service either defers or uses the configured fallback channel, and records why.",
+      "coach": "Ask how time and time zones are supplied so quiet hours stay testable."
+    },
+    {
+      "id": "fallback",
+      "topic": "Fallback channel",
+      "question": "When is the fallback channel used?",
+      "keywords": [
+        "fallback",
+        "channel",
+        "unavailable",
+        "quiet"
+      ],
+      "answer": "Use the fallback when the preferred channel is not available or when policy says so during quiet hours. The fallback must also be opted in and deduplicated.",
+      "coach": "Ask when fallback applies and whether it needs its own opt-in."
+    },
+    {
+      "id": "dedupe",
+      "topic": "Deduplication",
+      "question": "How do we avoid notifying the same policyholder twice for one event?",
+      "keywords": [
+        "dedupe",
+        "duplicate",
+        "event",
+        "idempotent"
+      ],
+      "answer": "Use a dedupe key of policyholder id plus event id plus event version. The dispatcher checks a store before sending and records the outcome. The store is an interface so tests can use an in-memory implementation.",
+      "coach": "Ask what uniquely identifies a notification before choosing a storage shape."
+    },
+    {
+      "id": "change",
+      "topic": "Constraint change",
+      "question": "What constraint change should I plan for?",
+      "keywords": [
+        "constraint",
+        "change",
+        "channel",
+        "compliance",
+        "extension"
+      ],
+      "answer": "Expect either a new channel or a compliance rule such as a mandatory delivery receipt. Your design should add that through the channel or audit interface, not by branching the dispatcher.",
+      "coach": "Ask what extension will test whether the boundaries are real."
+    }
+  ],
+  "clarifyingFallback": "Assume opt-ins are per event and channel, quiet hours use an injected clock and policyholder time zone, fallbacks must also be opted in, and dedupe is keyed by policyholder plus event. State any missing assumption.",
+  "fallbackProbe": "Which type would change if compliance required a delivery receipt for every channel?",
+  "phasePrompts": {
+    "brief": "Read the problem and constraints. Ask the questions you would ask a design interviewer, then state your plan.",
+    "implement": "The design timer is running. Write the responsibilities and interfaces in the editor, and say the trade-offs out loud as you go.",
+    "test": "Review your sketch. Which decision is hardest to test, and what boundary would make it testable?",
+    "change": "Here is the constraint change. Explain how your design absorbs it and which interface changes, if any.",
+    "debrief": "Time is up. Let us compare your structure, responsibilities, interfaces, extensibility, and stated trade-offs with the reference design."
+  },
+  "hints": [
+    "Separate the decision (should we send, on which channel) from delivery (send it). The dispatcher orchestrates both.",
+    "Make Channel an interface with an id and a send method. Put preference lookup, quiet hours, fallback, and dedupe behind small collaborators.",
+    "For the constraint change, add a receipt or new channel implementation and an audit hook. If the dispatcher needs a new if-branch, the boundary is wrong."
+  ],
+  "rubric": [
+    {
+      "id": "structure",
+      "type": "notes",
+      "weight": 25,
+      "criterion": "Structure and core types",
+      "strongAnswer": "Names a small set of types: preferences, channel, decision policy, dispatcher, dedupe store, and audit or explanation record.",
+      "keywords": [
+        "preference",
+        "channel",
+        "dispatcher",
+        "decision",
+        "dedupe",
+        "audit"
+      ]
+    },
+    {
+      "id": "responsibilities",
+      "type": "notes",
+      "weight": 20,
+      "criterion": "Separation of responsibilities",
+      "strongAnswer": "The dispatcher orchestrates; channels deliver; preference and quiet-hours policy decide; dedupe checks identity. Each has one reason to change.",
+      "keywords": [
+        "orchestration",
+        "delivery",
+        "decision",
+        "separation",
+        "single responsibility",
+        "policy",
+        "dedupe"
+      ]
+    },
+    {
+      "id": "interfaces",
+      "type": "notes",
+      "weight": 20,
+      "criterion": "Interface choices",
+      "strongAnswer": "Channel, preference store, dedupe store, clock, and explanation sink are interfaces with small contracts.",
+      "keywords": [
+        "interface",
+        "contract",
+        "method",
+        "channel",
+        "clock",
+        "store"
+      ]
+    },
+    {
+      "id": "extensibility",
+      "type": "notes",
+      "weight": 20,
+      "criterion": "Extensibility",
+      "strongAnswer": "A new channel is a new implementation registered or injected; the dispatcher core stays unchanged.",
+      "keywords": [
+        "new channel",
+        "without changing",
+        "extension",
+        "pluggable",
+        "registering",
+        "implementing",
+        "open closed"
+      ]
+    },
+    {
+      "id": "tradeoffs",
+      "type": "notes",
+      "weight": 15,
+      "criterion": "Stated trade-offs",
+      "strongAnswer": "Explains defer versus fallback, dedupe storage cost, and the cost of keeping the dispatcher thin.",
+      "keywords": [
+        "trade off",
+        "tradeoff",
+        "complexity",
+        "because",
+        "cost",
+        "auditable"
+      ]
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Compliance now requires a delivery receipt for every notification.",
+    "statement": "### Constraint change\n\nCompliance adds a delivery receipt requirement:\n\n1. Every send, including a fallback, must record whether the channel accepted it.\n2. Support must be able to explain why a notification was sent, deferred, or suppressed.\n\nAnswer in your design notes: which interface or type changes, how receipts flow without the dispatcher knowing channel internals, and what trade-off you accept. This is a design extension, not a code delta."
+  },
+  "referenceDesign": "Reference design: notification preferences\n\nCore types\n- NotificationRequest: policyholder id, event id and version, event type, and payload reference.\n- NotificationPreferences: per-event, per-channel opt-ins plus preferred and fallback channels.\n- PreferenceStore: interface with NotificationPreferences load(policyholderId).\n- Channel: interface with String id(), boolean supports(NotificationPreferences preferences), and DeliveryResult send(NotificationRequest request).\n- QuietHoursPolicy: decides whether the current time is quiet for the policyholder time zone, using the injected Clock.\n- DispatchPolicy: combines opt-in, quiet hours, and fallback into a DispatchDecision with a reason.\n- NotificationDispatcher: orchestrates dedupe, policy, channel selection, send, and audit; knows only interfaces.\n- DedupeStore: interface with boolean claim(policyholderId, eventId, eventVersion) and void record(...).\n- AuditSink: interface that records the dispatch decision and delivery result.\n- DeliveryResult: accepted flag, channel id, and detail.\n\nResponsibilities\n- Preference objects hold data; they do not send.\n- QuietHoursPolicy owns time logic; the dispatcher does not call now().\n- DedupeStore owns identity; the dispatcher asks it before sending.\n- Channels own delivery only; they do not decide whether to send.\n- AuditSink owns explanation; decisions and receipts are recorded there.\n\nInterfaces\n- Channel is the extension point: a new SMS, email, push, or partner channel implements it.\n- PreferenceStore, DedupeStore, and AuditSink are injected, so tests use in-memory fakes.\n- Clock is injected and passed to QuietHoursPolicy; no static time calls.\n\nExtensibility\n- Add a channel by implementing Channel and registering it; the dispatcher loop is unchanged.\n- Add a compliance receipt by returning DeliveryResult from every send and recording it through AuditSink.\n- Add a new event type by extending the event enum and preference data, not by adding dispatcher branches.\n\nTrade-offs\n- Deferring during quiet hours is friendlier but needs a scheduler; falling back is simpler but may violate preference intent. I chose a policy object so the rule is visible and testable.\n- Dedupe storage adds state and a failure mode; I chose an explicit store so the trade-off is auditable and idempotency is not hidden.\n- Keeping the dispatcher thin pushes coordination into small collaborators, which adds types but keeps changes local.\n- I left out retries and rate limiting: they are delivery concerns and would distract from the core decision design."
+}

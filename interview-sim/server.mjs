@@ -2,8 +2,8 @@ import http from 'node:http';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { detectJdk, runSubmission } from './lib/java.mjs';
-import { getScenario, loadScenarios, publicScenario, scenarioSummary } from './lib/scenarios.mjs';
+import { compileOnly, detectJdk, runSubmission } from './lib/java.mjs';
+import { getScenario, loadScenarios, publicScenario, roundTypeOf, scenarioSummary } from './lib/scenarios.mjs';
 import { aiStatus, clarifyingAnswer, adaptiveProbe, debriefNarrative } from './lib/ai.mjs';
 import { appendProgress, readProgress } from './lib/progress.mjs';
 
@@ -147,11 +147,49 @@ async function handleApi(request, response, url) {
       return true;
     }
     const source = safeString(body.source, 500000);
+    const set = body.phase === 'change' ? 'change' : 'base';
+    if (roundTypeOf(scenario) === 'design') {
+      const jdk = detectJdk();
+      if (!jdk.available) {
+        sendJson(response, 200, {
+          set,
+          design: true,
+          available: false,
+          compiled: false,
+          bonus: false,
+          compileOutput: jdk.installSteps.join('\n'),
+          results: [],
+        });
+        return true;
+      }
+      if (!source.trim() || !scenario.fileName) {
+        sendJson(response, 200, {
+          set,
+          design: true,
+          available: true,
+          compiled: false,
+          bonus: false,
+          compileOutput: 'No class sketch was supplied; design notes do not need to compile.',
+          results: [],
+        });
+        return true;
+      }
+      const compiled = await compileOnly({ source, fileName: scenario.fileName, testSupport: '', tests: [] });
+      sendJson(response, 200, {
+        set,
+        design: true,
+        available: true,
+        compiled: compiled.ok,
+        bonus: compiled.ok,
+        compileOutput: compiled.output,
+        results: [],
+      });
+      return true;
+    }
     if (!source.trim()) {
       sendJson(response, 400, { error: 'No candidate source code was supplied.' });
       return true;
     }
-    const set = body.phase === 'change' ? 'change' : 'base';
     if (set === 'change' && !scenario.changeRequest) {
       sendJson(response, 400, { error: 'This scenario has no change request.' });
       return true;

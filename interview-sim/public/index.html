@@ -13,7 +13,7 @@
       <span class="brand-mark" aria-hidden="true">IS</span>
       <div>
         <h1>Interview Simulator</h1>
-        <p>Java live coding, claim intake domain</p>
+        <p>Coding, debugging, and design rounds</p>
       </div>
     </div>
     <div class="topbar-actions">
@@ -31,21 +31,20 @@
           <p class="eyebrow">Timed practice, not a quiz</p>
           <h2>Walk into the room already warmed up.</h2>
           <p class="lede">
-            A scripted interviewer presents a claim-domain or core Java problem, answers your clarifying questions,
-            runs your code against hidden tests, interrupts with probes, adds a change request, then scores the session.
-            The AI layer is optional; everything works offline.
+            A scripted interviewer presents a coding, debugging, or object-oriented design round, answers your clarifying questions, runs hidden tests or checks your sketch, interrupts with probes, adds a change or constraint request, then scores the session. The AI layer is optional; everything works offline.
           </p>
         </div>
         <div class="hero-panel">
           <div class="stat"><span>Phases</span><strong>5</strong></div>
           <div class="stat"><span>Default clock</span><strong>60 min</strong></div>
-          <div class="stat"><span>Scenarios</span><strong id="scenarioCount">6</strong></div>
+          <div class="stat"><span>Scenarios</span><strong id="scenarioCount">12</strong></div>
           <div class="stat"><span>Runtime</span><strong>Local JDK</strong></div>
         </div>
       </div>
 
       <div id="jdkWarning" class="warning hidden">
-        <h3>Java is required before a session can start</h3>
+        <h3>Java is required for coding and debugging rounds</h3>
+        <p class="muted">Design rounds still run without a JDK; a detected JDK only enables the optional sketch-compile bonus.</p>
         <ul id="installSteps"></ul>
       </div>
 
@@ -118,15 +117,35 @@
               <button id="runBtn" type="button" class="primary">Run tests</button>
             </div>
           </div>
+          <div id="reproductionCard" class="round-card reproduction hidden">
+            <div class="change-head">
+              <span class="tag">Reproduction note</span>
+            </div>
+            <p id="reproductionNote" class="reproduction-text"></p>
+          </div>
+          <div id="designCard" class="round-card design hidden">
+            <div class="change-head">
+              <span class="tag">Design constraints</span>
+            </div>
+            <ul id="designConstraints" class="constraint-list"></ul>
+          </div>
           <div id="changeCard" class="change-card hidden">
             <div class="change-head">
               <span class="tag">Change request</span>
               <h3 id="changeTitle"></h3>
             </div>
             <div id="changeStatement" class="markdown"></div>
-            <p class="muted">You can extend the code already in the editor, or load the change-request starter. Your implementation is saved if you switch.</p>
+            <p id="changeHelp" class="muted">You can extend the code already in the editor, or load the change-request starter. Your implementation is saved if you switch.</p>
           </div>
-          <textarea id="editor" class="editor" spellcheck="false" aria-label="Java code editor"></textarea>
+          <textarea id="editor" class="editor" spellcheck="false" aria-label="Java code or design notes editor"></textarea>
+          <div id="diagnosisCard" class="round-card diagnosis hidden">
+            <div class="change-head">
+              <span class="tag">Root cause</span>
+            </div>
+            <label id="diagnosisTitle" class="diagnosis-title" for="diagnosisInput">Explain the defect and your fix in your own words.</label>
+            <textarea id="diagnosisInput" class="diagnosis-input" rows="3" spellcheck="true" placeholder="I think the root cause is..."></textarea>
+            <p class="muted">This note is scored for diagnosis quality, separately from the tests.</p>
+          </div>
           <div class="console-card">
             <div class="console-head">
               <h3>Test console</h3>

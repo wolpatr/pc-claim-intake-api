@@ -1,10 +1,27 @@
-const PHASES = [
-  { key: 'brief', label: 'Brief & Clarify', short: 'Brief' },
-  { key: 'implement', label: 'Implement', short: 'Code' },
-  { key: 'test', label: 'Test', short: 'Test' },
-  { key: 'change', label: 'Change Request', short: 'Change' },
-  { key: 'debrief', label: 'Debrief', short: 'Debrief' },
-];
+const PHASE_SETS = {
+  coding: [
+    { key: 'brief', label: 'Brief & Clarify', short: 'Brief' },
+    { key: 'implement', label: 'Implement', short: 'Code' },
+    { key: 'test', label: 'Test', short: 'Test' },
+    { key: 'change', label: 'Change Request', short: 'Change' },
+    { key: 'debrief', label: 'Debrief', short: 'Debrief' },
+  ],
+  debugging: [
+    { key: 'brief', label: 'Brief & Reproduce', short: 'Brief' },
+    { key: 'implement', label: 'Diagnose', short: 'Diagnose' },
+    { key: 'test', label: 'Fix & Verify', short: 'Fix' },
+    { key: 'change', label: 'Harden', short: 'Harden' },
+    { key: 'debrief', label: 'Debrief', short: 'Debrief' },
+  ],
+  design: [
+    { key: 'brief', label: 'Brief & Clarify', short: 'Brief' },
+    { key: 'implement', label: 'Design', short: 'Design' },
+    { key: 'test', label: 'Review Sketch', short: 'Review' },
+    { key: 'change', label: 'Constraint Change', short: 'Extend' },
+    { key: 'debrief', label: 'Debrief', short: 'Debrief' },
+  ],
+};
+const PHASES = PHASE_SETS.coding;
 
 const HINT_LABELS = ['nudge', 'direction', 'near answer'];
 const HINT_SCORES = [1, 0.8, 0.6, 0.4];
@@ -26,6 +43,8 @@ const state = {
   ticker: null,
   active: false,
   probesSeen: [],
+  candidateMessages: [],
+  diagnosisText: '',
   hints: [],
   clarify: { asked: 0, matched: new Set() },
   changeLoaded: false,
@@ -190,12 +209,57 @@ function duration(seconds) {
   return `${minutes}m ${String(rest).padStart(2, '0')}s`;
 }
 
+function phasesFor(roundType) {
+  return PHASE_SETS[roundType] || PHASE_SETS.coding;
+}
+
+function phaseList() {
+  return phasesFor(state.scenario?.roundType);
+}
+
 function currentPhase() {
-  return PHASES[state.phaseIndex].key;
+  return phaseList()[state.phaseIndex].key;
 }
 
 function activePhaseKeys() {
-  return PHASES.filter((phase) => phase.key !== 'debrief').map((phase) => phase.key);
+  return phaseList().filter((phase) => phase.key !== 'debrief').map((phase) => phase.key);
+}
+
+function roundTypeLabel(roundType) {
+  if (roundType === 'debugging') return 'Debugging';
+  if (roundType === 'design') return 'Design';
+  return 'Coding';
+}
+
+function stemToken(word) {
+  if (word.length > 4 && word.endsWith('ing')) return word.slice(0, -3);
+  if (word.length > 4 && word.endsWith('ed')) return word.slice(0, -2);
+  if (word.length > 3 && word.endsWith('ies')) return `${word.slice(0, -3)}y`;
+  if (word.length > 4 && /(?:ss|us|is|x|z|ch|sh)es$/.test(word)) return word.slice(0, -2);
+  if (word.length > 3 && word.endsWith('s') && !/(?:ss|us|is)$/.test(word)) return word.slice(0, -1);
+  return word;
+}
+
+function normalizeEvidence(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map(stemToken)
+    .join(' ');
+}
+
+function keywordCoverage(text, keywords = []) {
+  const haystack = ` ${normalizeEvidence(text)} `;
+  const list = (keywords || []).map((keyword) => normalizeEvidence(keyword)).filter(Boolean);
+  if (!normalizeEvidence(text) || !list.length) return { matched: 0, total: list.length, value: 0 };
+  let matched = 0;
+  for (const keyword of list) {
+    if (haystack.includes(` ${keyword} `)) matched += 1;
+  }
+  return { matched, total: list.length, value: matched / list.length };
 }
 
 function totalPhaseMinutes(phaseTimes) {
@@ -238,7 +302,7 @@ function renderStatus() {
   $('aiModeNote').textContent = state.ai?.configured
     ? `Hybrid mode: scripted spine plus AI clarify answers, one adaptive probe, and the debrief narrative. Model: ${state.ai.model}.`
     : 'Scripted mode: every answer, probe, and debrief works with no network or API key.';
-  $('scenarioCount').textContent = String(state.scenarios.length || 6);
+  $('scenarioCount').textContent = String(state.scenarios.length || 12);
 }
 
 function renderScenarios() {
@@ -248,18 +312,22 @@ function renderScenarios() {
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'scenario-card';
-    card.disabled = !state.jdk?.available;
+    card.disabled = !state.jdk?.available && scenario.roundType !== 'design';
     card.dataset.scenarioId = scenario.id;
+    card.dataset.roundType = scenario.roundType;
 
     const top = document.createElement('div');
     top.className = 'card-top';
+    const roundType = document.createElement('span');
+    roundType.className = `round-type ${scenario.roundType}`;
+    roundType.textContent = roundTypeLabel(scenario.roundType);
     const difficulty = document.createElement('span');
     difficulty.className = 'difficulty';
     difficulty.textContent = scenario.difficulty;
     const time = document.createElement('span');
     time.className = 'card-time';
     time.textContent = `${totalPhaseMinutes(scenario.phaseTimes)} min`;
-    top.append(difficulty, time);
+    top.append(roundType, difficulty, time);
 
     const title = document.createElement('h4');
     title.textContent = scenario.title;
@@ -277,7 +345,9 @@ function renderScenarios() {
     const start = document.createElement('div');
     start.className = 'card-start';
     const startText = document.createElement('span');
-    startText.textContent = state.jdk?.available ? 'Preview and start' : 'JDK required';
+    startText.textContent = state.jdk?.available
+      ? 'Preview and start'
+      : (scenario.roundType === 'design' ? 'Preview and start (no JDK needed)' : 'JDK required');
     const arrow = document.createElement('span');
     arrow.textContent = '->';
     start.append(startText, arrow);
@@ -290,15 +360,25 @@ function renderScenarios() {
 
 function openBriefing(scenario) {
   state.pendingScenario = scenario;
-  $('briefDifficulty').textContent = `${scenario.difficulty} · ${scenario.topics.join(' · ')}`;
+  $('briefDifficulty').textContent = `${roundTypeLabel(scenario.roundType)} · ${scenario.difficulty} · ${scenario.topics.join(' · ')}`;
   $('briefTitle').textContent = scenario.title;
   $('briefTagline').textContent = scenario.tagline;
   $('briefIntro').textContent = scenario.intro;
-  $('briefProblem').innerHTML = renderMarkdown(scenario.problemStatement);
+
+  const extras = [];
+  if (scenario.reproductionNote) {
+    extras.push('### Reproduction note\n\n' + scenario.reproductionNote);
+  }
+  if (scenario.design?.constraints?.length) {
+    extras.push('### Constraints\n\n' + scenario.design.constraints.map((item) => `- ${item}`).join('\n'));
+  }
+  $('briefProblem').innerHTML = renderMarkdown(
+    scenario.problemStatement + (extras.length ? '\n\n' + extras.join('\n\n') : ''),
+  );
 
   const fields = $('phaseTimeFields');
   fields.innerHTML = '';
-  for (const phase of PHASES) {
+  for (const phase of phasesFor(scenario.roundType)) {
     const label = document.createElement('label');
     const span = document.createElement('span');
     span.textContent = phase.label;
@@ -316,26 +396,31 @@ function openBriefing(scenario) {
     fields.appendChild(label);
   }
 
+  const design = scenario.roundType === 'design';
   const startBtn = $('startSessionBtn');
-  startBtn.disabled = !state.jdk?.available;
-  startBtn.textContent = state.jdk?.available ? 'Start session' : 'Install a JDK first';
-  $('briefJdkNote').textContent = state.jdk?.available
-    ? `Detected ${state.jdk.version} via ${state.jdk.source}. Code is compiled with --release 17.`
-    : 'No JDK detected. Follow the install steps on the previous screen, then restart the simulator.';
+  startBtn.disabled = !state.jdk?.available && !design;
+  startBtn.textContent = state.jdk?.available || design ? 'Start session' : 'Install a JDK first';
+  $('briefJdkNote').textContent = design
+    ? (state.jdk?.available
+      ? `Detected ${state.jdk.version} via ${state.jdk.source}. A class sketch is compiled as a bonus signal; design notes are enough.`
+      : 'Design rounds need no JDK. Write design notes or a class sketch; a compiled sketch is a bonus signal when a JDK is present.')
+    : (state.jdk?.available
+      ? `Detected ${state.jdk.version} via ${state.jdk.source}. Code is compiled with --release 17.`
+      : 'No JDK detected. Follow the install steps on the previous screen, then restart the simulator.');
 
   $('briefingDialog').showModal();
 }
 
 function startSession(scenario, minutes) {
-  if (!state.jdk?.available) {
-    showToast('A JDK is required before starting a session.');
+  if (!state.jdk?.available && scenario.roundType !== 'design') {
+    showToast('A JDK is required before starting a coding or debugging session.');
     return;
   }
   state.scenario = scenario;
   state.minutes = { ...minutes };
   state.budgets = {};
   state.elapsed = {};
-  for (const phase of PHASES) {
+  for (const phase of phasesFor(scenario.roundType)) {
     const value = Math.max(1, Math.min(120, Number(minutes[phase.key]) || scenario.phaseTimes[phase.key] || 1));
     state.budgets[phase.key] = Math.round(value * 60);
     state.elapsed[phase.key] = 0;
@@ -346,6 +431,8 @@ function startSession(scenario, minutes) {
   state.lastTick = performance.now();
   state.active = true;
   state.probesSeen = [];
+  state.candidateMessages = [];
+  state.diagnosisText = '';
   state.hints = [];
   state.clarify = { asked: 0, matched: new Set() };
   state.changeLoaded = false;
@@ -365,7 +452,7 @@ function startSession(scenario, minutes) {
   state.sessionId = newSessionId();
 
   $('scenarioTitle').textContent = scenario.title;
-  $('scenarioDifficulty').textContent = `${scenario.difficulty} · ${scenario.fileName}`;
+  $('scenarioDifficulty').textContent = `${roundTypeLabel(scenario.roundType)} · ${scenario.difficulty} · ${scenario.fileName}`;
   $('topicChips').innerHTML = '';
   for (const topic of scenario.topics) {
     const chip = document.createElement('span');
@@ -376,10 +463,31 @@ function startSession(scenario, minutes) {
   $('fileNameLabel').textContent = scenario.fileName;
   $('changeTitle').textContent = scenario.changeRequest?.prompt || 'Change request';
   $('changeStatement').innerHTML = renderMarkdown(scenario.changeRequest?.statement || '');
+  $('changeHelp').textContent = scenario.roundType === 'design'
+    ? 'This is a constraint change or extension question, not a code delta. Answer it in your design notes.'
+    : 'You can extend the code already in the editor, or load the change-request starter. Your implementation is saved if you switch.';
   $('changeCard').classList.add('hidden');
   $('editor').value = scenario.starterCode;
+
+  $('reproductionCard').classList.toggle('hidden', !scenario.reproductionNote);
+  $('reproductionNote').textContent = scenario.reproductionNote || '';
+  $('diagnosisCard').classList.toggle('hidden', scenario.roundType !== 'debugging');
+  $('diagnosisTitle').textContent = scenario.diagnosis?.prompt || 'Explain the root cause in your own words.';
+  $('diagnosisInput').value = '';
+  $('diagnosisInput').disabled = false;
+  $('designCard').classList.toggle('hidden', scenario.roundType !== 'design');
+  const constraints = $('designConstraints');
+  constraints.innerHTML = '';
+  for (const constraint of scenario.design?.constraints || []) {
+    const item = document.createElement('li');
+    item.textContent = constraint;
+    constraints.appendChild(item);
+  }
+
   $('chatLog').innerHTML = '';
-  $('consoleOutput').innerHTML = '<p class="muted">Run the tests to see compile output and per-test results.</p>';
+  $('consoleOutput').innerHTML = scenario.roundType === 'design'
+    ? '<p class="muted">Design notes do not need to compile. Press Check sketch to test an optional class sketch.</p>'
+    : '<p class="muted">Run the tests to see compile output and per-test results.</p>';
   $('consoleStatus').textContent = 'Not run yet';
   $('clarifyInput').value = '';
   $('clarifyInput').disabled = false;
@@ -394,7 +502,7 @@ function startSession(scenario, minutes) {
   $('exitBtn').classList.remove('hidden');
 
   addMessage('interviewer', scenario.intro, { meta: 'Opening' });
-  addMessage('interviewer', scenario.phasePrompts.brief, { meta: 'Brief & Clarify' });
+  addMessage('interviewer', scenario.phasePrompts.brief, { meta: phasesFor(scenario.roundType)[0].label });
   updateClarifyCounter();
   updateHintButton();
   renderPhaseUI();
@@ -454,10 +562,11 @@ function renderTimer() {
 }
 
 function renderPhaseUI() {
-  $('phaseLabel').textContent = PHASES[state.phaseIndex].label;
+  const phases = phaseList();
+  $('phaseLabel').textContent = phases[state.phaseIndex].label;
   const steps = $('phaseSteps');
   steps.innerHTML = '';
-  PHASES.forEach((phase, index) => {
+  phases.forEach((phase, index) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = phase.short;
@@ -467,24 +576,34 @@ function renderPhaseUI() {
   });
 
   $('pauseBtn').textContent = state.running ? 'Pause' : 'Resume';
-  $('nextPhaseBtn').textContent = state.phaseIndex >= PHASES.length - 1 ? 'Finish and debrief' : 'Next phase';
+  $('nextPhaseBtn').textContent = state.phaseIndex >= phases.length - 1 ? 'Finish and debrief' : 'Next phase';
   const key = currentPhase();
-  $('loadChangeBtn').classList.toggle('hidden', key !== 'change');
+  const design = state.scenario?.roundType === 'design';
+  const hasChangeStarter = Boolean(state.scenario?.changeRequest?.starterCode);
+  $('loadChangeBtn').classList.toggle('hidden', key !== 'change' || !hasChangeStarter);
   $('changeCard').classList.toggle('hidden', state.phaseIndex < 3);
   $('runBtn').disabled = state.runBusy || key === 'debrief';
   $('runBtn').textContent = state.runBusy
     ? 'Running...'
-    : (key === 'change' ? 'Run change tests' : 'Run tests');
+    : design
+      ? 'Check sketch (optional)'
+      : (key === 'change' ? 'Run change tests' : 'Run tests');
   const closed = key === 'debrief';
   $('hintBtn').disabled = closed || state.hints.length >= (state.scenario?.hints?.length || 3);
   $('probeBtn').disabled = closed || state.probeBusy;
   $('clarifyInput').disabled = closed;
   $('clarifyForm').querySelector('button').disabled = closed;
   $('resetPhaseBtn').disabled = closed;
+  $('diagnosisCard').classList.toggle('hidden', state.scenario?.roundType !== 'debugging' || closed);
+  $('diagnosisInput').disabled = closed;
   updateHintButton();
 }
 
 function addMessage(role, text, options = {}) {
+  if (role === 'candidate' && text) {
+    state.candidateMessages.push(String(text).slice(0, 4000));
+    if (state.candidateMessages.length > 80) state.candidateMessages.shift();
+  }
   const log = $('chatLog');
   const message = document.createElement('div');
   message.className = `message ${role}`;
@@ -519,9 +638,10 @@ function updateHintButton() {
 
 function jumpToPhase(index) {
   if (!state.active) return;
-  const target = Math.max(0, Math.min(PHASES.length - 1, index));
+  const phases = phaseList();
+  const target = Math.max(0, Math.min(phases.length - 1, index));
   if (target === state.phaseIndex) {
-    if (target === PHASES.length - 1) openDebrief();
+    if (target === phases.length - 1) openDebrief();
     return;
   }
   state.phaseIndex = target;
@@ -539,11 +659,15 @@ function jumpToPhase(index) {
 
   state.running = true;
   if (key === 'change') {
-    addMessage('interviewer', `Change request: ${state.scenario.changeRequest?.prompt || 'new scope'}. The full statement and starter are in the card above the editor.`, {
-      meta: 'Change request',
+    const design = state.scenario.roundType === 'design';
+    const detail = design
+      ? 'This is a constraint change, not a code delta: answer the extension question in your notes.'
+      : 'The full statement and starter are in the card above the editor.';
+    addMessage('interviewer', `Change request: ${state.scenario.changeRequest?.prompt || 'new scope'}. ${detail}`, {
+      meta: design ? 'Constraint change' : 'Change request',
     });
   } else {
-    addMessage('interviewer', state.scenario.phasePrompts[key], { meta: PHASES[target].label });
+    addMessage('interviewer', state.scenario.phasePrompts[key], { meta: phases[target].label });
   }
   renderPhaseUI();
   renderTimer();
@@ -551,7 +675,8 @@ function jumpToPhase(index) {
 
 function advancePhase() {
   if (!state.active) return;
-  if (state.phaseIndex >= PHASES.length - 1) {
+  const phases = phaseList();
+  if (state.phaseIndex >= phases.length - 1) {
     openDebrief();
     return;
   }
@@ -575,7 +700,7 @@ function resetPhase() {
   state.lastTick = performance.now();
   renderTimer();
   renderPhaseUI();
-  addMessage('system', `${PHASES[state.phaseIndex].label} timer reset.`);
+  addMessage('system', `${phaseList()[state.phaseIndex].label} timer reset.`);
 }
 
 async function submitClarify(event) {
@@ -684,7 +809,7 @@ async function requestProbe() {
 }
 
 function loadChangeStarter() {
-  if (!state.scenario?.changeRequest || state.phaseIndex < 3) return;
+  if (!state.scenario?.changeRequest?.starterCode || state.phaseIndex < 3) return;
   if (!state.changeLoaded) {
     state.savedImplementCode = $('editor').value;
   }
@@ -704,7 +829,7 @@ function restoreCode() {
 
 function resetCode() {
   if (!state.scenario) return;
-  const useChange = currentPhase() === 'change' && state.scenario.changeRequest;
+  const useChange = currentPhase() === 'change' && state.scenario.changeRequest?.starterCode;
   const source = useChange ? state.scenario.changeRequest.starterCode : state.scenario.starterCode;
   if (!window.confirm('Replace the editor contents with the starter code?')) return;
   $('editor').value = source;
@@ -720,8 +845,9 @@ async function runTests() {
   state.runBusy = true;
   $('runBtn').disabled = true;
   $('runBtn').textContent = 'Running...';
+  const design = state.scenario.roundType === 'design';
   const output = $('consoleOutput');
-  output.innerHTML = `<p class="run-head">Running ${set === 'change' ? 'change-request' : 'base'} tests...</p>`;
+  output.innerHTML = `<p class="run-head">${design ? 'Checking the optional class sketch...' : `Running ${set === 'change' ? 'change-request' : 'base'} tests...`}</p>`;
   $('consoleStatus').textContent = 'Running';
 
   try {
@@ -734,7 +860,13 @@ async function runTests() {
     if (set === 'change') state.changeRun = result;
     else state.baseRun = result;
     renderConsole(result, set);
-    if (!result.compiled) {
+    if (design) {
+      addMessage('interviewer', result.compiled
+        ? 'Your class sketch compiles. That is a bonus signal, not a requirement for this round.'
+        : 'The sketch did not compile. Design notes are still valid; only a compiling sketch earns the bonus.', {
+        meta: 'Sketch check',
+      });
+    } else if (!result.compiled) {
       addMessage('interviewer', 'The build failed. Read the compiler output in the console; fix the first error before chasing the rest.', {
         meta: 'Test run',
       });
@@ -765,6 +897,29 @@ function renderConsole(result, set) {
   const output = $('consoleOutput');
   output.innerHTML = '';
   const label = set === 'change' ? 'Change-request tests' : 'Base tests';
+
+  if (result.design) {
+    if (!result.available) {
+      const note = document.createElement('p');
+      note.className = 'compile-fail';
+      note.textContent = result.compileOutput || 'No JDK available; a sketch cannot be checked.';
+      output.appendChild(note);
+      $('consoleStatus').textContent = 'Sketch check unavailable';
+      return;
+    }
+    const head = document.createElement('p');
+    head.className = 'run-head';
+    head.textContent = result.compiled
+      ? 'Sketch check: compiled (bonus signal)'
+      : 'Sketch check: did not compile (design notes are still valid)';
+    output.appendChild(head);
+    const detail = document.createElement('pre');
+    detail.className = result.compiled ? 'test-detail ok' : 'test-detail';
+    detail.textContent = result.compileOutput;
+    output.appendChild(detail);
+    $('consoleStatus').textContent = result.compiled ? 'Sketch compiled · bonus' : 'Notes only · no bonus';
+    return;
+  }
 
   if (!result.available) {
     const failure = document.createElement('p');
@@ -833,12 +988,30 @@ function ratio(result) {
 }
 
 function summarizeRun(result) {
+  if (result?.design) {
+    return {
+      passed: 0,
+      total: 0,
+      compiled: Boolean(result.compiled),
+      bonus: Boolean(result.bonus),
+      design: true,
+    };
+  }
   if (!result?.compiled) return { passed: 0, total: result?.results?.length || 0, compiled: false };
   return {
     passed: result.results.filter((test) => test.passed).length,
     total: result.results.length,
     compiled: true,
   };
+}
+
+function designEvidenceText() {
+  return [state.diagnosisText, $('editor').value, ...state.candidateMessages].join('\n');
+}
+
+function diagnosisEvidenceText() {
+  const typed = $('diagnosisInput') ? $('diagnosisInput').value : '';
+  return [state.diagnosisText, typed, ...state.candidateMessages].join('\n');
 }
 
 function scoreSession() {
@@ -852,15 +1025,37 @@ function scoreSession() {
   const totalElapsed = scoredPhases.reduce((sum, key) => sum + (state.elapsed[key] || 0), 0);
   const over = Math.max(0, totalElapsed - totalBudget);
   const efficiency = totalBudget > 0 ? Math.max(0, 1 - over / totalBudget) : 0;
-  const sources = { tests: baseRatio, change: changeRatio, clarify: clarifyRatio, hints: hintRatio, efficiency };
+  const sketchRatio = state.baseRun?.bonus ? 1 : 0;
+  const sources = {
+    tests: baseRatio,
+    change: changeRatio,
+    clarify: clarifyRatio,
+    hints: hintRatio,
+    efficiency,
+    sketch: sketchRatio,
+  };
+  const evidence = designEvidenceText();
+  const diagnosis = diagnosisEvidenceText();
 
   const criteria = state.scenario.rubric.map((item) => {
-    const value = sources[item.type] ?? 0;
+    let value;
+    let coverage = null;
+    if (item.type === 'notes') {
+      coverage = keywordCoverage(evidence, item.keywords || []);
+      value = coverage.value;
+    } else if (item.type === 'diagnosis') {
+      coverage = keywordCoverage(diagnosis, state.scenario.diagnosis?.keywords || []);
+      value = coverage.value;
+    } else {
+      value = sources[item.type] ?? 0;
+    }
+    const threshold = item.type === 'notes' || item.type === 'diagnosis' ? 0.6 : 0.75;
     return {
       ...item,
       value,
+      coverage,
       earned: Math.round(item.weight * value * 10) / 10,
-      met: value >= 0.75,
+      met: value >= threshold,
     };
   });
   const score = Math.round(criteria.reduce((sum, item) => sum + item.earned, 0));
@@ -869,14 +1064,31 @@ function scoreSession() {
   if (score >= 85) grade = 'Strong hire signal';
   else if (score >= 70) grade = 'Solid, with gaps';
   else if (score >= 50) grade = 'Developing';
-  return { score, grade, criteria, missed, baseRatio, changeRatio, clarifyRatio, hintRatio, efficiency };
+  return {
+    score,
+    grade,
+    criteria,
+    missed,
+    baseRatio,
+    changeRatio,
+    clarifyRatio,
+    hintRatio,
+    efficiency,
+    diagnosis: state.scenario.roundType === 'debugging'
+      ? keywordCoverage(diagnosis, state.scenario.diagnosis?.keywords || [])
+      : null,
+    sketchCompiled: Boolean(state.baseRun?.bonus),
+  };
 }
 
 function buildSummary(scoring) {
   return {
+    roundType: state.scenario.roundType,
     score: scoring.score,
     grade: scoring.grade,
     tests: { base: summarizeRun(state.baseRun), change: summarizeRun(state.changeRun) },
+    sketchCompiled: scoring.sketchCompiled,
+    diagnosis: scoring.diagnosis,
     hintsUsed: state.hints.length,
     missed: scoring.missed,
     criteria: scoring.criteria.map((item) => ({ criterion: item.criterion, earned: item.earned, weight: item.weight, met: item.met })),
@@ -923,23 +1135,30 @@ async function openDebrief() {
   const token = state.sessionToken;
   const source = $('editor').value;
   state.running = false;
-  state.phaseIndex = PHASES.length - 1;
+  state.phaseIndex = phaseList().length - 1;
   renderPhaseUI();
   renderTimer();
+  const design = state.scenario.roundType === 'design';
   if (!state.debriefPrompted) {
     state.debriefPrompted = true;
     addMessage('interviewer', state.scenario.phasePrompts.debrief, { meta: 'Debrief' });
-    addMessage('system', 'Running the hidden tests against your final code, then scoring the rubric.');
+    addMessage('system', design
+      ? 'Checking whether the class sketch compiles as a bonus signal, then scoring the design rubric.'
+      : 'Running the hidden tests against your final code, then scoring the rubric.');
   }
 
   const body = $('debriefBody');
-  body.innerHTML = '<p class="muted">Running the final hidden tests against your code...</p>';
+  body.innerHTML = design
+    ? '<p class="muted">Checking the optional class sketch and scoring your design notes...</p>'
+    : '<p class="muted">Running the final hidden tests against your code...</p>';
   $('debriefTitle').textContent = `${state.scenario.title} · debrief`;
   $('debriefDialog').showModal();
 
   const base = await runFinal('base', token, source);
   if (token !== state.sessionToken) return;
-  const change = state.scenario.changeRequest ? await runFinal('change', token, source) : null;
+  const change = !design && state.scenario.changeRequest
+    ? await runFinal('change', token, source)
+    : null;
   if (token !== state.sessionToken) return;
   state.baseRun = base;
   state.changeRun = change;
@@ -966,6 +1185,7 @@ async function openDebrief() {
 
   const record = {
     sessionId: state.sessionId,
+    roundType: state.scenario.roundType,
     scenarioId: state.scenario.id,
     title: state.scenario.title,
     difficulty: state.scenario.difficulty,
@@ -978,8 +1198,12 @@ async function openDebrief() {
       weight: item.weight,
       earned: item.earned,
       met: item.met,
+      type: item.type,
+      coverage: item.coverage ? { matched: item.coverage.matched, total: item.coverage.total } : null,
     })),
     missed: scoring.missed,
+    sketchCompiled: scoring.sketchCompiled,
+    diagnosis: scoring.diagnosis,
     tests: summary.tests,
     phaseSeconds: state.elapsed,
     phaseBudgets: state.budgets,
@@ -1001,23 +1225,30 @@ async function openDebrief() {
 
 function renderDebrief(scoring, summary, narrative) {
   const body = $('debriefBody');
+  const design = state.scenario.roundType === 'design';
+  const debugging = state.scenario.roundType === 'debugging';
   const narrativeBadge = narrative.source === 'ai'
     ? '<span class="source-badge ai">AI interviewer</span>'
     : '<span class="source-badge scripted">Scripted fallback</span>';
 
-  const rubricRows = scoring.criteria.map((item) => `
+  const rubricRows = scoring.criteria.map((item) => {
+    const evidence = item.coverage
+      ? `<span class="strong">Matches ${item.coverage.matched}/${item.coverage.total} evidence signals</span>`
+      : '';
+    return `
     <tr>
-      <td>${escapeHtml(item.criterion)}<span class="strong">${escapeHtml(item.strongAnswer)}</span></td>
+      <td>${escapeHtml(item.criterion)}<span class="strong">${escapeHtml(item.strongAnswer)}</span>${evidence}</td>
       <td>${item.weight}</td>
       <td>${item.earned}</td>
       <td class="${item.met ? 'met' : 'missed'}">${item.met ? 'Strong' : 'Below bar'}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const missed = scoring.missed.length
     ? `<ul class="missed-list">${scoring.missed.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
     : '<p class="muted">Every rubric criterion reached the strong band.</p>';
 
-  const phaseRows = PHASES.map((phase) => {
+  const phaseRows = phaseList().map((phase) => {
     const used = state.elapsed[phase.key] || 0;
     const budget = state.budgets[phase.key] || 0;
     return `<div class="metric-row"><span>${phase.label}</span><span>${duration(used)} / ${clock(budget, false)}</span></div>`;
@@ -1035,19 +1266,38 @@ function renderDebrief(scoring, summary, narrative) {
     </div>`;
   }).join('');
 
-  const testsHtml = [
-    renderTestSummary('Base tests', summary.tests.base, state.baseRun),
-    state.scenario.changeRequest
-      ? renderTestSummary('Change request', summary.tests.change, state.changeRun)
-      : '',
-  ].join('');
+  const testsHtml = design
+    ? `<div class="metric-row"><span>Sketch compile</span><span>${summary.tests.base.compiled ? 'compiled (bonus)' : 'notes only (no bonus)'}</span></div>
+       <p class="muted">Design notes never need to compile. A compiled class sketch is only a bonus signal.</p>`
+    : [
+        renderTestSummary('Base tests', summary.tests.base, state.baseRun),
+        state.scenario.changeRequest
+          ? renderTestSummary('Change request', summary.tests.change, state.changeRun)
+          : '',
+      ].join('');
+
+  const evidenceLine = design
+    ? `${roundTypeLabel(state.scenario.roundType)} round · sketch ${summary.tests.base.compiled ? 'compiled (bonus)' : 'not compiled (notes only)'} · ${state.hints.length} hint${state.hints.length === 1 ? '' : 's'} used · ${state.clarify.asked} clarifying question${state.clarify.asked === 1 ? '' : 's'}.`
+    : debugging
+      ? `Base tests ${summary.tests.base.passed}/${summary.tests.base.total} · diagnosis ${scoring.diagnosis?.matched ?? 0}/${scoring.diagnosis?.total ?? 0} signals · change tests ${summary.tests.change.passed}/${summary.tests.change.total} · ${state.hints.length} hint${state.hints.length === 1 ? '' : 's'} used.`
+      : `Base tests ${summary.tests.base.passed}/${summary.tests.base.total} · change tests ${summary.tests.change.passed}/${summary.tests.change.total} · ${state.hints.length} hint${state.hints.length === 1 ? '' : 's'} used · ${state.clarify.asked} clarifying question${state.clarify.asked === 1 ? '' : 's'}.`;
+
+  const reference = design
+    ? `<details class="reference">
+        <summary>Reveal the reference design</summary>
+        <pre>${escapeHtml(state.scenario.referenceDesign || '')}</pre>
+      </details>`
+    : `<details class="reference">
+        <summary>Reveal the reference solution</summary>
+        <pre>${escapeHtml(state.scenario.referenceSolution || '')}</pre>
+      </details>`;
 
   body.innerHTML = `
     <div class="score-banner">
       <div class="score-value">${scoring.score}<small>/100</small></div>
       <div>
         <h3>${escapeHtml(scoring.grade)}</h3>
-        <p>Base tests ${summary.tests.base.passed}/${summary.tests.base.total} · change tests ${summary.tests.change.passed}/${summary.tests.change.total} · ${state.hints.length} hint${state.hints.length === 1 ? '' : 's'} used · ${state.clarify.asked} clarifying question${state.clarify.asked === 1 ? '' : 's'}.</p>
+        <p>${escapeHtml(evidenceLine)}</p>
       </div>
     </div>
     <div class="debrief-grid">
@@ -1074,6 +1324,7 @@ function renderDebrief(scoring, summary, narrative) {
           ${phaseRows}
           <div class="metric-row"><span>Hints used</span><span>${escapeHtml(hintText)}</span></div>
           <div class="metric-row"><span>Probes seen</span><span>${summary.probesFired}</span></div>
+          ${design ? `<div class="metric-row"><span>Sketch compile bonus</span><span>${summary.tests.base.compiled ? 'earned' : 'not earned'}</span></div>` : ''}
           <div class="metric-row"><span>Phase time total</span><span>${duration(Object.values(state.elapsed).reduce((sum, value) => sum + value, 0))}</span></div>
         </div>
       </div>
@@ -1084,14 +1335,11 @@ function renderDebrief(scoring, summary, narrative) {
         <div class="coach-list">${clarifyRows}</div>
       </div>
       <div class="debrief-card">
-        <h3>Final tests</h3>
+        <h3>${design ? 'Sketch check' : 'Final tests'}</h3>
         ${testsHtml}
       </div>
     </div>
-    <details class="reference">
-      <summary>Reveal the reference solution</summary>
-      <pre>${escapeHtml(state.scenario.referenceSolution)}</pre>
-    </details>
+    ${reference}
   `;
 }
 
@@ -1140,6 +1388,7 @@ function recommendNext() {
       let score = scenario.topics.filter((topic) => current.topics.includes(topic)).length * 3;
       if (weak && scenario.topics.includes(weak)) score += 4;
       score -= played(scenario.id) * 2;
+      if (scenario.roundType !== current.roundType) score += 2;
       if (scenario.difficulty === current.difficulty) score += 1;
       return { scenario, score };
     })
@@ -1205,12 +1454,14 @@ function renderHistory(records) {
     const tests = record.tests || {};
     const base = tests.base ? `${tests.base.passed}/${tests.base.total}` : '-';
     const change = tests.change ? `${tests.change.passed}/${tests.change.total}` : '-';
+    const testsCell = record.roundType === 'design' ? (tests.base?.compiled ? 'sketch compiled' : 'notes only') : `${base} / ${change}`;
     return `<tr>
       <td>${escapeHtml(when)}</td>
+      <td>${escapeHtml(roundTypeLabel(record.roundType))}</td>
       <td>${escapeHtml(record.title || record.scenarioId)}</td>
       <td class="topics-cell">${escapeHtml((record.topics || []).join(', '))}</td>
       <td class="score-cell">${Number(record.score) || 0}</td>
-      <td>${escapeHtml(base)} / ${escapeHtml(change)}</td>
+      <td>${escapeHtml(testsCell)}</td>
       <td>${Number(record.hints?.length) || 0} hints</td>
       <td>${escapeHtml(record.mode === 'hybrid' ? 'AI' : 'Scripted')}</td>
     </tr>`;
@@ -1232,7 +1483,7 @@ function renderHistory(records) {
     <div class="debrief-card">
       <h3>Completed sessions</h3>
       <table class="history-table">
-        <thead><tr><th>When</th><th>Scenario</th><th>Topics</th><th>Score</th><th>Base / change</th><th>Hints</th><th>Mode</th></tr></thead>
+        <thead><tr><th>When</th><th>Type</th><th>Scenario</th><th>Topics</th><th>Score</th><th>Tests / sketch</th><th>Hints</th><th>Mode</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -1265,6 +1516,9 @@ function bindEvents() {
   $('loadChangeBtn').addEventListener('click', loadChangeStarter);
   $('restoreCodeBtn').addEventListener('click', restoreCode);
   $('resetCodeBtn').addEventListener('click', resetCode);
+  $('diagnosisInput').addEventListener('input', (event) => {
+    state.diagnosisText = event.target.value;
+  });
 
   $('editor').addEventListener('keydown', (event) => {
     if (event.key === 'Tab') {

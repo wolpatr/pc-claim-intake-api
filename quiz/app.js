@@ -375,7 +375,7 @@
       [
         el("div", {
           class: "progress-fill",
-          style: "width: " + Math.round((state.index / total) * 100) + "%"
+          style: "width: " + Math.round(((state.index + 1) / total) * 100) + "%"
         })
       ]
     );
@@ -489,8 +489,7 @@
   function buildFeedback(question, selected) {
     var correct = selected === question.answer;
     var box = el("div", {
-      class: "feedback " + (correct ? "good" : "bad"),
-      role: "status"
+      class: "feedback " + (correct ? "good" : "bad")
     });
 
     box.appendChild(

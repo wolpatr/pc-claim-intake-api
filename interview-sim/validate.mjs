@@ -130,6 +130,15 @@ function validateCodeScenario(scenario, problems) {
       if (!isString(scenario.diagnosis.prompt)) problems.push('diagnosis.prompt is required');
       if (!isStringArray(scenario.diagnosis.keywords)) problems.push('diagnosis.keywords must be non-empty');
       if (!isString(scenario.diagnosis.strongAnswer)) problems.push('diagnosis.strongAnswer is required');
+      if (isStringArray(scenario.diagnosis.keywords) && isString(scenario.diagnosis.strongAnswer)) {
+        const threshold = criterionThreshold('diagnosis');
+        const strong = keywordCoverage(scenario.diagnosis.strongAnswer, scenario.diagnosis.keywords);
+        if (strong.value < threshold) {
+          problems.push(
+            `diagnosis strongAnswer matches ${strong.matched}/${strong.total} keywords, needs ${threshold}`,
+          );
+        }
+      }
     }
     const regression = (scenario.hiddenTests || []).filter((test) => test.regression === true);
     if (!regression.length) problems.push('a debugging round needs at least one hidden test marked regression: true');

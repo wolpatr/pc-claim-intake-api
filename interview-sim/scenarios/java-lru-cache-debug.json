@@ -24,12 +24,12 @@
     "keywords": [
       "access order",
       "insertion order",
-      "linked hash map",
+      "least recently used",
       "recency",
       "get",
       "refresh",
-      "evict",
-      "eviction"
+      "eviction",
+      "oldest"
     ],
     "strongAnswer": "The LinkedHashMap was built in insertion order, so get does not move a key to the most-recent position and eviction removes the oldest insertion rather than the least recently used entry. It must be constructed in access order."
   },

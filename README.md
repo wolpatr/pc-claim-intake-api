@@ -9,6 +9,11 @@ A small P&C (property & casualty) claim-intake REST API in Java. This is a **lea
 - Retrieve a claim
 - Update a claim's status
 
+## Study plan
+
+The day-by-day plan this practice project follows is in
+[`docs/study-plan.md`](docs/study-plan.md): a two-week Associate Consultant / Consultant Developer study plan covering Agile and Git, Java and object-oriented design, REST, testing, CI/CD, cloud trade-offs, responsible AI, and customer communication.
+
 ## What exists today: the claim domain model
 
 The repository currently contains a typed, in-memory domain model for claim intake, covered by JUnit 5 tests. There is no HTTP/REST layer yet.

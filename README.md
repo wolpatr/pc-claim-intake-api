@@ -22,7 +22,7 @@ The repository contains a typed, in-memory domain model for claim intake, an HTT
 - `com.example.claimintake.domain` — immutable `Claim`, the claimant-supplied `ClaimSubmission`, the `ClaimStatus` enum (`OPEN`, `IN_REVIEW`, `CLOSED`), and the `ClaimType` enum.
 - `com.example.claimintake.validation` — `ClaimValidator` checks required fields, email and phone format, incident date, and amount, then throws a `ValidationException` that lists every problem found.
 - `com.example.claimintake.repository` — `ClaimRepository` interface with an in-memory implementation. Claims live only as long as the process.
-- `com.example.claimintake.service` — `ClaimService` interface and implementation for submitting a claim, retrieving it by id, and updating its status.
+- `com.example.claimintake.service` — `ClaimService` interface and implementation for submitting a claim, retrieving it by id, listing claims with an optional status filter, and updating its status.
 - `com.example.claimintake.web` — `ClaimController` exposes the user stories as JSON endpoints, with one shared error shape for validation, not-found, and malformed-JSON responses.
 
 Run the tests with `./mvnw test` (`mvnw.cmd test` on Windows). Java 17 or newer is required.

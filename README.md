@@ -26,6 +26,8 @@ The repository contains a typed, in-memory domain model for claim intake, an HTT
 
 Run the tests with `./mvnw test` (`mvnw.cmd test` on Windows). Java 17 or newer is required.
 
+Persistence and CI are later steps in the plan.
+
 ## Running the API
 
 Start the application with `./mvnw spring-boot:run` (`mvnw.cmd spring-boot:run` on Windows). It listens on http://localhost:8080 by default; pass `--server.port=...` to use another port.

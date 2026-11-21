@@ -89,6 +89,31 @@ class ClaimValidatorTest {
     }
 
     @Test
+    void rejectsEmailWithConsecutiveDotsInDomain() {
+        assertRejectsInvalidEmail("ada@example..com");
+    }
+
+    @Test
+    void rejectsDomainLabelStartingWithHyphen() {
+        assertRejectsInvalidEmail("ada@-example.com");
+    }
+
+    @Test
+    void rejectsDomainLabelEndingWithHyphen() {
+        assertRejectsInvalidEmail("ada@example-.com");
+    }
+
+    @Test
+    void acceptsCommonValidEmailShapes() {
+        for (String email : List.of(
+                "ada.lovelace@example.com",
+                "first.last+tag@sub.example.co.uk",
+                "ada@example.com")) {
+            assertDoesNotThrow(() -> validator.validate(submission(email, "555-0100")), email);
+        }
+    }
+
+    @Test
     void rejectsMalformedPhoneWhenProvided() {
         ClaimSubmission submission = submission("ada@example.com", "call me");
 
@@ -136,6 +161,16 @@ class ClaimValidatorTest {
     @Test
     void rejectsNullSubmission() {
         assertThrows(NullPointerException.class, () -> validator.validate(null));
+    }
+
+    private void assertRejectsInvalidEmail(String email) {
+        ClaimSubmission submission = submission(email, "555-0100");
+
+        ValidationException exception = assertThrows(ValidationException.class,
+                () -> validator.validate(submission), email);
+
+        assertTrue(exception.getErrors().contains("claimantEmail must be a valid email address"),
+                email);
     }
 
     private ClaimSubmission submission(String email, String phone) {

@@ -29,9 +29,9 @@ A separate offline quiz for self-testing this project and the study plan lives i
 
 ## Interview simulator
 
-A timed live coding interview simulator for Java practice lives in
-[`interview-sim/`](interview-sim/README.md). It compiles and runs your code locally,
-interrupts with probes, adds a change request, and scores a debrief. Start it with
+A timed coding, debugging, and object-oriented design interview simulator for Java practice lives in
+[`interview-sim/`](interview-sim/README.md). It runs your code locally, interrupts with probes,
+adds a change or constraint request, and scores a debrief. Start it with
 `node interview-sim/server.mjs` and open http://127.0.0.1:4321.
 
 ## Stack

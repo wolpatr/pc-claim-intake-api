@@ -1,0 +1,225 @@
+{
+  "id": "claim-duplicate-detection",
+  "title": "Claim duplicate detection for fraud review",
+  "tagline": "Group claims that share a policy, incident date, and amount, then return the duplicate id groups in a stable order.",
+  "difficulty": "Intermediate",
+  "roundType": "coding",
+  "topics": [
+    "Claim domain",
+    "Grouping",
+    "Normalization",
+    "Java"
+  ],
+  "phaseTimes": {
+    "brief": 5,
+    "implement": 25,
+    "test": 10,
+    "change": 10,
+    "debrief": 10
+  },
+  "intro": "Fraud review wants duplicate claims surfaced before payment. Two claims are duplicates when they share the same policy, incident date, and amount. Build the detector, then expect a richer result shape. Ask your questions first.",
+  "clarifyingQuestions": [
+    {
+      "id": "key",
+      "topic": "Duplicate key",
+      "question": "Which fields make two claims duplicates?",
+      "keywords": [
+        "fields",
+        "policy",
+        "incident date",
+        "amount",
+        "duplicate"
+      ],
+      "answer": "Two claims are duplicates when the policy number, incident date, and amount all match. The claim id is not part of the key because it is what identifies each claim.",
+      "coach": "Ask which fields form the duplicate key and which are payload."
+    },
+    {
+      "id": "normalize",
+      "topic": "Normalization",
+      "question": "How should policy numbers and amounts be normalized before comparing?",
+      "keywords": [
+        "case",
+        "trim",
+        "scale",
+        "normalize",
+        "uppercase"
+      ],
+      "answer": "Trim the policy number and compare it case-insensitively; store the uppercase form. Compare amounts by numeric value, so 100 and 100.00 are the same. Incident dates compare as dates.",
+      "coach": "Ask about trimming, case, and BigDecimal scale before grouping."
+    },
+    {
+      "id": "order",
+      "topic": "Output ordering",
+      "question": "How should duplicate groups and ids be ordered?",
+      "keywords": [
+        "sort",
+        "order",
+        "alphabetical",
+        "ascending",
+        "stable"
+      ],
+      "answer": "Sort ids inside each group ascending. Sort groups by their first id ascending, so output is deterministic.",
+      "coach": "Ask whether the output order is part of the contract."
+    },
+    {
+      "id": "missing",
+      "topic": "Incomplete claims",
+      "question": "What should happen when an id or key field is missing?",
+      "keywords": [
+        "missing",
+        "blank",
+        "skip",
+        "null",
+        "incomplete"
+      ],
+      "answer": "Skip null claims and claims with a blank id, blank policy number, null incident date, or null amount. They cannot be assessed for duplicates and must not appear in the output.",
+      "coach": "Ask how incomplete records are handled rather than assuming they are valid."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "What follow-up shape is expected for the change request?",
+      "keywords": [
+        "change",
+        "group record",
+        "rich",
+        "policy",
+        "follow-up"
+      ],
+      "answer": "Expect a richer duplicate group that carries the policy number, incident date, amount, and ids. The original list-of-lists API must keep working.",
+      "coach": "Ask whether the follow-up enriches the result or changes the rules."
+    }
+  ],
+  "clarifyingFallback": "Assume the triple of trimmed policy, incident date, and numeric amount is the key. Skip incomplete records and sort everything deterministically.",
+  "problemStatement": "### Context\n\nFraud review wants duplicate claims surfaced before payment. Two claims are potential duplicates when they share the same policy, incident date, and amount.\n\n### Your task\n\nImplement ClaimDuplicateDetector.findDuplicates(claims).\n\n### Rules\n\n1. A null claims list returns an empty list.\n2. Skip null claims and claims with a blank id, blank policy number, null incident date, or null amount.\n3. Trim the policy number and compare case-insensitively; store the uppercase form.\n4. Compare amounts numerically, so 100 and 100.00 are equal. Compare incident dates as dates.\n5. A group needs at least two claims. Return the ids of the group.\n6. Sort ids inside a group ascending. Sort groups by their first id ascending.\n\n### Visible examples\n\n- Two claims with policy AB-1, same date, amounts 100 and 100.00, ids b and a: one group [a, b].\n- Same policy and date but different amounts: no duplicate group.\n- Groups with first ids z and a: the a group sorts first.",
+  "fileName": "ClaimDuplicateDetector.java",
+  "starterCode": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.ArrayList;\nimport java.util.List;\n\npublic final class ClaimDuplicateDetector {\n\n    public record Claim(String id, String policyNumber, LocalDate incidentDate, BigDecimal amount) {\n    }\n\n    public record DuplicateGroup(String policyNumber, LocalDate incidentDate, BigDecimal amount, List<String> claimIds) {\n    }\n\n    private ClaimDuplicateDetector() {\n    }\n\n    public static List<List<String>> findDuplicates(List<Claim> claims) {\n        if (claims == null) {\n            return List.of();\n        }\n        List<List<String>> groups = new ArrayList<>();\n        // TODO: group claims by policy, incident date, and amount, then return ids for groups with two or more claims.\n        return groups;\n    }\n}\n",
+  "testSupport": "import java.math.BigDecimal;\nimport java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void money(String expected, BigDecimal actual, String what) {\n        BigDecimal wanted = new BigDecimal(expected);\n        if (actual == null || actual.compareTo(wanted) != 0) {\n            throw new AssertionError(what + \" | expected <\" + wanted + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "examples": [
+    {
+      "input": "two claims, policy AB-1, same date, amounts 100 and 100.00",
+      "output": "[[a, b]]"
+    },
+    {
+      "input": "same policy and date, different amounts",
+      "output": "[]"
+    },
+    {
+      "input": "claims missing an id or amount",
+      "output": "skipped"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "no duplicates returns an empty list",
+      "className": "NoDuplicatesTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class NoDuplicatesTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 4, 1);\n        var claims = List.of(\n                new ClaimDuplicateDetector.Claim(\"a\", \"AB-1\", date, new BigDecimal(\"100\")),\n                new ClaimDuplicateDetector.Claim(\"b\", \"AB-2\", date, new BigDecimal(\"100\")),\n                new ClaimDuplicateDetector.Claim(\"c\", \"AB-1\", date.plusDays(1), new BigDecimal(\"100\")));\n        TestSupport.eq(List.of(), ClaimDuplicateDetector.findDuplicates(claims), \"distinct claims\");\n        System.out.println(\"PASS: no duplicates returns an empty list\");\n    }\n}\n"
+    },
+    {
+      "name": "policy case and amount scale are normalized",
+      "className": "NormalizationTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class NormalizationTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 4, 1);\n        var claims = List.of(\n                new ClaimDuplicateDetector.Claim(\"b\", \" ab-1 \", date, new BigDecimal(\"100.00\")),\n                new ClaimDuplicateDetector.Claim(\"a\", \"AB-1\", date, new BigDecimal(\"100\")));\n        TestSupport.eq(List.of(List.of(\"a\", \"b\")), ClaimDuplicateDetector.findDuplicates(claims), \"normalized duplicate\");\n        System.out.println(\"PASS: policy case and amount scale are normalized\");\n    }\n}\n"
+    },
+    {
+      "name": "incomplete claims are skipped",
+      "className": "IncompleteClaimsTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class IncompleteClaimsTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 4, 1);\n        var claims = Arrays.asList(\n                null,\n                new ClaimDuplicateDetector.Claim(\" \", \"AB-1\", date, new BigDecimal(\"100\")),\n                new ClaimDuplicateDetector.Claim(\"a\", \"AB-1\", date, null),\n                new ClaimDuplicateDetector.Claim(\"b\", \"AB-1\", date, new BigDecimal(\"100\")));\n        TestSupport.eq(List.of(), ClaimDuplicateDetector.findDuplicates(claims), \"incomplete claims\");\n        System.out.println(\"PASS: incomplete claims are skipped\");\n    }\n}\n"
+    },
+    {
+      "name": "groups are sorted by their first id",
+      "className": "GroupOrderingTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class GroupOrderingTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 4, 1);\n        var claims = List.of(\n                new ClaimDuplicateDetector.Claim(\"y\", \"AB-2\", date, new BigDecimal(\"200\")),\n                new ClaimDuplicateDetector.Claim(\"x\", \"AB-2\", date, new BigDecimal(\"200\")),\n                new ClaimDuplicateDetector.Claim(\"b\", \"AB-1\", date, new BigDecimal(\"100\")),\n                new ClaimDuplicateDetector.Claim(\"a\", \"AB-1\", date, new BigDecimal(\"100\")));\n        var expected = List.of(List.of(\"a\", \"b\"), List.of(\"x\", \"y\"));\n        TestSupport.eq(expected, ClaimDuplicateDetector.findDuplicates(claims), \"group order\");\n        System.out.println(\"PASS: groups are sorted by their first id\");\n    }\n}\n"
+    },
+    {
+      "name": "same policy and date with different amounts is not a duplicate",
+      "className": "AmountMismatchTest",
+      "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class AmountMismatchTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 4, 1);\n        var claims = List.of(\n                new ClaimDuplicateDetector.Claim(\"a\", \"AB-1\", date, new BigDecimal(\"100\")),\n                new ClaimDuplicateDetector.Claim(\"b\", \"AB-1\", date, new BigDecimal(\"101\")));\n        TestSupport.eq(List.of(), ClaimDuplicateDetector.findDuplicates(claims), \"amount mismatch\");\n        System.out.println(\"PASS: same policy and date with different amounts is not a duplicate\");\n    }\n}\n"
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Return duplicate groups with the shared policy, date, and amount attached.",
+    "statement": "### Change request\n\nThe fraud screen wants the shared key on each group, not just the ids.\n\nAdd:\n\nList<DuplicateGroup> findDuplicateGroups(List<Claim> claims)\n\nRequirements:\n\n- DuplicateGroup is the record in the starter with policyNumber, incidentDate, amount, and claimIds.\n- Apply the same normalization, skipping, sorting, and grouping rules as findDuplicates.\n- policyNumber is the trimmed uppercase form.\n- amount is the numeric amount with trailing zeros stripped.\n- findDuplicates must keep working and must agree with findDuplicateGroups.",
+    "starterCode": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.ArrayList;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.TreeMap;\n\npublic final class ClaimDuplicateDetector {\n\n    public record Claim(String id, String policyNumber, LocalDate incidentDate, BigDecimal amount) {\n    }\n\n    public record DuplicateGroup(String policyNumber, LocalDate incidentDate, BigDecimal amount, List<String> claimIds) {\n    }\n\n    private ClaimDuplicateDetector() {\n    }\n\n    public static List<List<String>> findDuplicates(List<Claim> claims) {\n        List<String> keys = new ArrayList<>();\n        Map<String, List<String>> grouped = bucket(claims, keys);\n        List<List<String>> groups = new ArrayList<>();\n        for (String key : keys) {\n            List<String> ids = grouped.get(key);\n            if (ids.size() >= 2) {\n                ids.sort(String::compareTo);\n                groups.add(List.copyOf(ids));\n            }\n        }\n        groups.sort((left, right) -> left.get(0).compareTo(right.get(0)));\n        return groups;\n    }\n\n    public static List<DuplicateGroup> findDuplicateGroups(List<Claim> claims) {\n        // TODO: return the same duplicates with the policy, date, and amount attached.\n        return List.of();\n    }\n\n    private static Map<String, List<String>> bucket(List<Claim> claims, List<String> keys) {\n        Map<String, List<String>> grouped = new TreeMap<>();\n        if (claims == null) {\n            return grouped;\n        }\n        for (Claim claim : claims) {\n            if (claim == null || blank(claim.id()) || blank(claim.policyNumber())\n                    || claim.incidentDate() == null || claim.amount() == null) {\n                continue;\n            }\n            String key = claim.policyNumber().trim().toUpperCase() + \"|\" + claim.incidentDate()\n                    + \"|\" + claim.amount().stripTrailingZeros().toPlainString();\n            if (!grouped.containsKey(key)) {\n                keys.add(key);\n            }\n            grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(claim.id());\n        }\n        return grouped;\n    }\n\n    private static boolean blank(String value) {\n        return value == null || value.trim().isEmpty();\n    }\n}\n",
+    "fileName": "ClaimDuplicateDetector.java",
+    "hiddenTests": [
+      {
+        "name": "rich groups carry the shared key",
+        "className": "RichGroupsTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class RichGroupsTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 4, 1);\n        var claims = List.of(\n                new ClaimDuplicateDetector.Claim(\"b\", \" ab-1 \", date, new BigDecimal(\"100.00\")),\n                new ClaimDuplicateDetector.Claim(\"a\", \"AB-1\", date, new BigDecimal(\"100\")));\n        var groups = ClaimDuplicateDetector.findDuplicateGroups(claims);\n        TestSupport.eq(1, groups.size(), \"group count\");\n        TestSupport.eq(\"AB-1\", groups.get(0).policyNumber(), \"policy\");\n        TestSupport.eq(date, groups.get(0).incidentDate(), \"date\");\n        TestSupport.money(\"100\", groups.get(0).amount(), \"amount\");\n        TestSupport.eq(List.of(\"a\", \"b\"), groups.get(0).claimIds(), \"ids\");\n        System.out.println(\"PASS: rich groups carry the shared key\");\n    }\n}\n"
+      },
+      {
+        "name": "rich groups keep the list API in agreement",
+        "className": "RichAgreementTest",
+        "code": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.*;\n\npublic class RichAgreementTest {\n    public static void main(String[] args) {\n        var date = LocalDate.of(2026, 4, 1);\n        var claims = List.of(\n                new ClaimDuplicateDetector.Claim(\"d\", \"AB-2\", date, new BigDecimal(\"50\")),\n                new ClaimDuplicateDetector.Claim(\"c\", \"AB-2\", date, new BigDecimal(\"50\")),\n                new ClaimDuplicateDetector.Claim(\"b\", \"AB-1\", date, new BigDecimal(\"25\")),\n                new ClaimDuplicateDetector.Claim(\"a\", \"AB-1\", date, new BigDecimal(\"25\")));\n        var rich = ClaimDuplicateDetector.findDuplicateGroups(claims);\n        var ids = new ArrayList<List<String>>();\n        for (var group : rich) {\n            ids.add(group.claimIds());\n        }\n        TestSupport.eq(ids, ClaimDuplicateDetector.findDuplicates(claims), \"agreement\");\n        System.out.println(\"PASS: rich groups keep the list API in agreement\");\n    }\n}\n"
+      },
+      {
+        "name": "rich groups handle null input",
+        "className": "RichNullTest",
+        "code": "import java.util.*;\n\npublic class RichNullTest {\n    public static void main(String[] args) {\n        TestSupport.eq(List.of(), ClaimDuplicateDetector.findDuplicateGroups(null), \"null input\");\n        System.out.println(\"PASS: rich groups handle null input\");\n    }\n}\n"
+      }
+    ]
+  },
+  "probes": [
+    {
+      "atMinute": 5,
+      "phase": "implement",
+      "text": "What is the exact grouping key, and which normalization step is easiest to get wrong?"
+    },
+    {
+      "atMinute": 15,
+      "phase": "implement",
+      "text": "Why is the sort order part of the contract rather than a presentation detail?"
+    }
+  ],
+  "fallbackProbe": "Give me one input where a naive equals-based key would incorrectly separate duplicates.",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me the questions you would ask a real interviewer. When you are ready, tell me your plan and start the clock.",
+    "implement": "The implementation timer is running. Talk through your approach as you code, and tell me when you want to run the tests.",
+    "test": "Run the tests. Read the first failure carefully, say what you think caused it, then fix it.",
+    "change": "Here is the change request. Treat it as new scope from the interviewer, not as a rewrite of everything you have done.",
+    "debrief": "Time is up. Let us review what happened: the tests, the rubric, your questions, and the hints you used."
+  },
+  "hints": [
+    "Build a canonical key from trimmed uppercase policy, the date, and the numeric amount.",
+    "Use a LinkedHashMap or sort the keys to keep groups deterministic. Sort ids inside each group before adding the group.",
+    "Implement findDuplicateGroups first and make findDuplicates project the ids out of it, so the two APIs cannot disagree."
+  ],
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 30,
+      "criterion": "Duplicate detection passes the hidden suite",
+      "strongAnswer": "Normalization, incomplete records, grouping, and stable ordering all match the contract."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "Rich duplicate groups pass the hidden suite",
+      "strongAnswer": "The shared key is attached, normalization is preserved, and the list API stays in agreement."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Clarified the key, normalization, and ordering",
+      "strongAnswer": "Asked which fields key a duplicate, how policy and amount normalize, and whether output order matters."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Worked independently",
+      "strongAnswer": "Built the canonical key and stable ordering with no hints or one hint after a real attempt."
+    },
+    {
+      "id": "efficiency",
+      "type": "efficiency",
+      "weight": 10,
+      "criterion": "Worked within the phase budget",
+      "strongAnswer": "Implemented and tested both result shapes within the budget."
+    }
+  ],
+  "referenceSolution": "import java.math.BigDecimal;\nimport java.time.LocalDate;\nimport java.util.ArrayList;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.TreeMap;\n\npublic final class ClaimDuplicateDetector {\n\n    public record Claim(String id, String policyNumber, LocalDate incidentDate, BigDecimal amount) {\n    }\n\n    public record DuplicateGroup(String policyNumber, LocalDate incidentDate, BigDecimal amount, List<String> claimIds) {\n    }\n\n    private ClaimDuplicateDetector() {\n    }\n\n    public static List<List<String>> findDuplicates(List<Claim> claims) {\n        List<List<String>> groups = new ArrayList<>();\n        for (DuplicateGroup group : findDuplicateGroups(claims)) {\n            groups.add(group.claimIds());\n        }\n        return groups;\n    }\n\n    public static List<DuplicateGroup> findDuplicateGroups(List<Claim> claims) {\n        if (claims == null) {\n            return List.of();\n        }\n        Map<String, List<Claim>> grouped = new TreeMap<>();\n        for (Claim claim : claims) {\n            if (claim == null || blank(claim.id()) || blank(claim.policyNumber())\n                    || claim.incidentDate() == null || claim.amount() == null) {\n                continue;\n            }\n            String key = claim.policyNumber().trim().toUpperCase() + \"|\" + claim.incidentDate()\n                    + \"|\" + claim.amount().stripTrailingZeros().toPlainString();\n            grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(claim);\n        }\n        List<DuplicateGroup> groups = new ArrayList<>();\n        for (List<Claim> bucket : grouped.values()) {\n            if (bucket.size() < 2) {\n                continue;\n            }\n            List<String> ids = new ArrayList<>();\n            for (Claim claim : bucket) {\n                ids.add(claim.id());\n            }\n            ids.sort(String::compareTo);\n            Claim first = bucket.get(0);\n            groups.add(new DuplicateGroup(\n                    first.policyNumber().trim().toUpperCase(),\n                    first.incidentDate(),\n                    first.amount().stripTrailingZeros(),\n                    List.copyOf(ids)));\n        }\n        groups.sort((left, right) -> left.claimIds().get(0).compareTo(right.claimIds().get(0)));\n        return groups;\n    }\n\n    private static boolean blank(String value) {\n        return value == null || value.trim().isEmpty();\n    }\n}\n"
+}

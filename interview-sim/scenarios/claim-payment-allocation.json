@@ -1,0 +1,220 @@
+{
+  "id": "claim-payment-allocation",
+  "title": "Claim payment allocation across line items",
+  "tagline": "Allocate a settlement payment across claim line items in order, then report the unallocated remainder.",
+  "difficulty": "Associate",
+  "roundType": "coding",
+  "topics": [
+    "Claim domain",
+    "Greedy allocation",
+    "Money",
+    "Java"
+  ],
+  "phaseTimes": {
+    "brief": 5,
+    "implement": 25,
+    "test": 10,
+    "change": 10,
+    "debrief": 10
+  },
+  "intro": "This round is about paying a claim. Finance gives us one settlement amount and a list of approved line items. Allocate the payment in order, never overpay a line, and report what is left. Ask your questions before you start.",
+  "clarifyingQuestions": [
+    {
+      "id": "order",
+      "topic": "Payment order",
+      "question": "Should payments follow the order of the line items?",
+      "keywords": [
+        "order",
+        "line items",
+        "sequence",
+        "priority"
+      ],
+      "answer": "Yes. Pay line items strictly in the order supplied. Earlier line items have priority, and a line item never receives more than it is owed.",
+      "coach": "Ask whether line items have priority or should be paid proportionally."
+    },
+    {
+      "id": "partial",
+      "topic": "Partial payments",
+      "question": "Can the last line item be partially paid?",
+      "keywords": [
+        "partial",
+        "last item",
+        "split",
+        "partially"
+      ],
+      "answer": "Yes. When the remaining payment is smaller than the next line item, pay what remains and leave the rest of that line item unpaid.",
+      "coach": "Ask whether partial payment is allowed and which item absorbs it."
+    },
+    {
+      "id": "nulls",
+      "topic": "Null and invalid values",
+      "question": "How should null or negative amounts be handled?",
+      "keywords": [
+        "null",
+        "negative",
+        "missing",
+        "invalid"
+      ],
+      "answer": "A null list returns an empty list. A null or non-positive payment allocates zero everywhere. A null or non-positive line item is treated as zero and receives nothing.",
+      "coach": "Ask explicitly about null and invalid money values before coding."
+    },
+    {
+      "id": "scale",
+      "topic": "Decimal handling",
+      "question": "Should I round amounts or preserve the BigDecimal scale?",
+      "keywords": [
+        "rounding",
+        "scale",
+        "decimal",
+        "bigdecimal"
+      ],
+      "answer": "Do not round. Use BigDecimal arithmetic. Tests compare numeric value rather than scale, but allocations should come from min and subtract operations on the supplied values.",
+      "coach": "Ask about rounding and scale so money comparisons are deterministic."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "What is the follow-up change expected to be?",
+      "keywords": [
+        "follow-up",
+        "remainder",
+        "detailed",
+        "unallocated"
+      ],
+      "answer": "Expect a detailed result that returns both the per-line allocations and the unallocated remainder. The original allocate method must keep working.",
+      "coach": "Ask about the follow-up shape and whether the existing API stays stable."
+    }
+  ],
+  "clarifyingFallback": "Assume payments are applied in order, never exceed a line item, and use BigDecimal without rounding. State any missing rule and keep it deterministic.",
+  "problemStatement": "### Context\n\nA settlement payment arrives for a claim with several approved line items. Finance needs to know how much of the payment goes to each line, and how much is left unallocated.\n\n### Your task\n\nImplement ClaimPaymentAllocator.allocate(payment, lineItems).\n\n### Rules\n\n1. A null lineItems list returns an empty list.\n2. A null or non-positive payment allocates zero to every line item.\n3. Null or non-positive line items are treated as zero and receive nothing.\n4. Pay line items in the supplied order. Each line receives at most its own amount.\n5. When the payment runs out, later line items receive zero.\n6. Use BigDecimal arithmetic; do not round.\n\n### Visible examples\n\n- payment 100, items 60, 60, 30: allocations 60, 40, 0.\n- payment 100, items 30, 20: allocations 30, 20, leaving 50 unallocated.\n- payment 100, items 60, null, -5, 50: allocations 60, 0, 0, 40.",
+  "fileName": "ClaimPaymentAllocator.java",
+  "starterCode": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.List;\n\npublic final class ClaimPaymentAllocator {\n\n    public record Allocation(List<BigDecimal> amounts, BigDecimal remainder) {\n    }\n\n    private ClaimPaymentAllocator() {\n    }\n\n    public static List<BigDecimal> allocate(BigDecimal payment, List<BigDecimal> lineItems) {\n        if (lineItems == null) {\n            return List.of();\n        }\n        List<BigDecimal> allocations = new ArrayList<>();\n        for (int index = 0; index < lineItems.size(); index += 1) {\n            // TODO: pay each line item in order, up to what is still available.\n            allocations.add(BigDecimal.ZERO);\n        }\n        return allocations;\n    }\n}\n",
+  "testSupport": "import java.math.BigDecimal;\nimport java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void money(String expected, BigDecimal actual, String what) {\n        BigDecimal wanted = new BigDecimal(expected);\n        if (actual == null || actual.compareTo(wanted) != 0) {\n            throw new AssertionError(what + \" | expected <\" + wanted + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "examples": [
+    {
+      "input": "allocate(100, [60, 60, 30])",
+      "output": "[60, 40, 0]"
+    },
+    {
+      "input": "allocate(100, [30, 20])",
+      "output": "[30, 20] with 50 unallocated"
+    },
+    {
+      "input": "allocate(null, [10])",
+      "output": "[0]"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "null line item list returns an empty list",
+      "className": "NullLineItemsTest",
+      "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class NullLineItemsTest {\n    public static void main(String[] args) {\n        TestSupport.eq(List.of(), ClaimPaymentAllocator.allocate(new BigDecimal(\"100\"), null), \"null line items\");\n        System.out.println(\"PASS: null line item list returns an empty list\");\n    }\n}\n"
+    },
+    {
+      "name": "null and non-positive payments allocate zero",
+      "className": "InvalidPaymentTest",
+      "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class InvalidPaymentTest {\n    public static void main(String[] args) {\n        List<BigDecimal> items = List.of(new BigDecimal(\"10\"), new BigDecimal(\"20\"));\n        TestSupport.money(\"0\", ClaimPaymentAllocator.allocate(null, items).get(0), \"null payment first\");\n        TestSupport.money(\"0\", ClaimPaymentAllocator.allocate(BigDecimal.ZERO, items).get(1), \"zero payment second\");\n        TestSupport.money(\"0\", ClaimPaymentAllocator.allocate(new BigDecimal(\"-5\"), items).get(0), \"negative payment\");\n        System.out.println(\"PASS: null and non-positive payments allocate zero\");\n    }\n}\n"
+    },
+    {
+      "name": "payments are applied in line item order",
+      "className": "PaysInOrderTest",
+      "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class PaysInOrderTest {\n    public static void main(String[] args) {\n        var result = ClaimPaymentAllocator.allocate(\n                new BigDecimal(\"100\"),\n                List.of(new BigDecimal(\"60\"), new BigDecimal(\"60\"), new BigDecimal(\"30\")));\n        TestSupport.eq(3, result.size(), \"allocation count\");\n        TestSupport.money(\"60\", result.get(0), \"first item\");\n        TestSupport.money(\"40\", result.get(1), \"second item\");\n        TestSupport.money(\"0\", result.get(2), \"third item\");\n        System.out.println(\"PASS: payments are applied in line item order\");\n    }\n}\n"
+    },
+    {
+      "name": "null and negative line items receive nothing",
+      "className": "SkipsInvalidItemsTest",
+      "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class SkipsInvalidItemsTest {\n    public static void main(String[] args) {\n        var result = ClaimPaymentAllocator.allocate(\n                new BigDecimal(\"100\"),\n                Arrays.asList(new BigDecimal(\"60\"), null, new BigDecimal(\"-5\"), new BigDecimal(\"50\")));\n        TestSupport.money(\"60\", result.get(0), \"first item\");\n        TestSupport.money(\"0\", result.get(1), \"null item\");\n        TestSupport.money(\"0\", result.get(2), \"negative item\");\n        TestSupport.money(\"40\", result.get(3), \"last item\");\n        System.out.println(\"PASS: null and negative line items receive nothing\");\n    }\n}\n"
+    },
+    {
+      "name": "an exact payment leaves later items at zero",
+      "className": "ExactPaymentTest",
+      "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class ExactPaymentTest {\n    public static void main(String[] args) {\n        var result = ClaimPaymentAllocator.allocate(\n                new BigDecimal(\"50\"),\n                List.of(new BigDecimal(\"20\"), new BigDecimal(\"30\"), new BigDecimal(\"15\")));\n        TestSupport.money(\"20\", result.get(0), \"first item\");\n        TestSupport.money(\"30\", result.get(1), \"second item\");\n        TestSupport.money(\"0\", result.get(2), \"third item\");\n        System.out.println(\"PASS: an exact payment leaves later items at zero\");\n    }\n}\n"
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Return the unallocated remainder alongside the allocations.",
+    "statement": "### Change request\n\nFinance wants one result object for the settlement screen.\n\nAdd:\n\nAllocation allocateDetailed(BigDecimal payment, List<BigDecimal> lineItems)\n\nRequirements:\n\n- Allocation is the record already in the starter with amounts and remainder.\n- amounts follows the same rules as allocate.\n- remainder is the part of the payment that was not allocated.\n- A null lineItems list returns an empty amounts list and the full valid payment as remainder.\n- The original allocate method must keep working and must agree with allocateDetailed.",
+    "starterCode": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.List;\n\npublic final class ClaimPaymentAllocator {\n\n    public record Allocation(List<BigDecimal> amounts, BigDecimal remainder) {\n    }\n\n    private ClaimPaymentAllocator() {\n    }\n\n    public static List<BigDecimal> allocate(BigDecimal payment, List<BigDecimal> lineItems) {\n        if (lineItems == null) {\n            return List.of();\n        }\n        BigDecimal remaining = payment == null || payment.signum() <= 0 ? BigDecimal.ZERO : payment;\n        List<BigDecimal> allocations = new ArrayList<>();\n        for (BigDecimal item : lineItems) {\n            BigDecimal owed = item == null || item.signum() <= 0 ? BigDecimal.ZERO : item;\n            BigDecimal paid = remaining.min(owed);\n            allocations.add(paid);\n            remaining = remaining.subtract(paid);\n        }\n        return allocations;\n    }\n\n    public static Allocation allocateDetailed(BigDecimal payment, List<BigDecimal> lineItems) {\n        // TODO: return the same allocations plus the unallocated remainder.\n        return new Allocation(allocate(payment, lineItems), BigDecimal.ZERO);\n    }\n}\n",
+    "fileName": "ClaimPaymentAllocator.java",
+    "hiddenTests": [
+      {
+        "name": "detailed allocation reports the unallocated remainder",
+        "className": "DetailedRemainderTest",
+        "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class DetailedRemainderTest {\n    public static void main(String[] args) {\n        var result = ClaimPaymentAllocator.allocateDetailed(\n                new BigDecimal(\"100\"),\n                List.of(new BigDecimal(\"30\"), new BigDecimal(\"20\")));\n        TestSupport.money(\"30\", result.amounts().get(0), \"first item\");\n        TestSupport.money(\"20\", result.amounts().get(1), \"second item\");\n        TestSupport.money(\"50\", result.remainder(), \"remainder\");\n        System.out.println(\"PASS: detailed allocation reports the unallocated remainder\");\n    }\n}\n"
+      },
+      {
+        "name": "detailed allocation handles null inputs",
+        "className": "DetailedNullTest",
+        "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class DetailedNullTest {\n    public static void main(String[] args) {\n        var result = ClaimPaymentAllocator.allocateDetailed(new BigDecimal(\"75\"), null);\n        TestSupport.eq(List.of(), result.amounts(), \"no allocations\");\n        TestSupport.money(\"75\", result.remainder(), \"full remainder\");\n        var invalid = ClaimPaymentAllocator.allocateDetailed(null, List.of(new BigDecimal(\"10\")));\n        TestSupport.money(\"0\", invalid.amounts().get(0), \"invalid payment allocation\");\n        TestSupport.money(\"0\", invalid.remainder(), \"invalid payment remainder\");\n        System.out.println(\"PASS: detailed allocation handles null inputs\");\n    }\n}\n"
+      },
+      {
+        "name": "detailed allocation stops at zero remainder",
+        "className": "DetailedExactTest",
+        "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class DetailedExactTest {\n    public static void main(String[] args) {\n        var result = ClaimPaymentAllocator.allocateDetailed(\n                new BigDecimal(\"60\"),\n                List.of(new BigDecimal(\"20\"), new BigDecimal(\"40\")));\n        TestSupport.money(\"0\", result.remainder(), \"exact payment remainder\");\n        TestSupport.eq(result.amounts(), ClaimPaymentAllocator.allocate(new BigDecimal(\"60\"),\n                List.of(new BigDecimal(\"20\"), new BigDecimal(\"40\"))), \"allocate agrees\");\n        System.out.println(\"PASS: detailed allocation stops at zero remainder\");\n    }\n}\n"
+      }
+    ]
+  },
+  "probes": [
+    {
+      "atMinute": 5,
+      "phase": "implement",
+      "text": "Which invariant are you enforcing inside the loop, and where would an overpayment slip in?"
+    },
+    {
+      "atMinute": 15,
+      "phase": "implement",
+      "text": "How do you keep the detailed result and the original list API from disagreeing?"
+    }
+  ],
+  "fallbackProbe": "Walk me through a payment that runs out halfway through a line item.",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me the questions you would ask a real interviewer. When you are ready, tell me your plan and start the clock.",
+    "implement": "The implementation timer is running. Talk through your approach as you code, and tell me when you want to run the tests.",
+    "test": "Run the tests. Read the first failure carefully, say what you think caused it, then fix it.",
+    "change": "Here is the change request. Treat it as new scope from the interviewer, not as a rewrite of everything you have done.",
+    "debrief": "Time is up. Let us review what happened: the tests, the rubric, your questions, and the hints you used."
+  },
+  "hints": [
+    "Track one remaining balance. For each item, take the smaller of the remaining balance and the item amount.",
+    "Treat null or non-positive payment and line items as zero before the loop. Do not round BigDecimal values.",
+    "Implement the detailed method first, then let the original allocate method delegate to it so the two APIs cannot diverge."
+  ],
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 30,
+      "criterion": "Allocation rules pass the hidden suite",
+      "strongAnswer": "Order, partial payment, nulls, non-positive values, and exact payments all match the specification."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "Detailed allocation passes the hidden suite",
+      "strongAnswer": "Remainder is correct, null inputs are safe, and allocate and allocateDetailed agree."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Clarified ordering, partial payment, and money handling",
+      "strongAnswer": "Asked about item order, partial payment, null values, and BigDecimal scale before coding."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Worked independently",
+      "strongAnswer": "Found the running-balance invariant with no hints or one hint after a genuine attempt."
+    },
+    {
+      "id": "efficiency",
+      "type": "efficiency",
+      "weight": 10,
+      "criterion": "Worked within the phase budget",
+      "strongAnswer": "Implemented and tested both allocation APIs without overtime."
+    }
+  ],
+  "referenceSolution": "import java.math.BigDecimal;\nimport java.util.ArrayList;\nimport java.util.List;\n\npublic final class ClaimPaymentAllocator {\n\n    public record Allocation(List<BigDecimal> amounts, BigDecimal remainder) {\n    }\n\n    private ClaimPaymentAllocator() {\n    }\n\n    public static List<BigDecimal> allocate(BigDecimal payment, List<BigDecimal> lineItems) {\n        return allocateDetailed(payment, lineItems).amounts();\n    }\n\n    public static Allocation allocateDetailed(BigDecimal payment, List<BigDecimal> lineItems) {\n        if (lineItems == null) {\n            return new Allocation(List.of(), payment == null || payment.signum() <= 0 ? BigDecimal.ZERO : payment);\n        }\n        BigDecimal remaining = payment == null || payment.signum() <= 0 ? BigDecimal.ZERO : payment;\n        List<BigDecimal> allocations = new ArrayList<>();\n        for (BigDecimal item : lineItems) {\n            BigDecimal owed = item == null || item.signum() <= 0 ? BigDecimal.ZERO : item;\n            BigDecimal paid = remaining.min(owed);\n            allocations.add(paid);\n            remaining = remaining.subtract(paid);\n        }\n        return new Allocation(List.copyOf(allocations), remaining);\n    }\n}\n"
+}

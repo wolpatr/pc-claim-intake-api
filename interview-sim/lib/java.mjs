@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const INSTALL_STEPS = [
-  'No JDK was found. The simulator will not start a session without one.',
+  'No JDK was found. Coding and debugging rounds need a JDK; design rounds run without one.',
   'Install Eclipse Temurin 17 (LTS) or 21 (LTS): https://adoptium.net/temurin/releases/',
   'Or on Windows run: winget install --id EclipseAdoptium.Temurin.21.JDK -e',
   'Set JAVA_HOME to the installed JDK folder and add its bin directory to PATH.',
@@ -12,7 +12,30 @@ const INSTALL_STEPS = [
   'Restart the simulator with: node interview-sim/server.mjs',
 ];
 
+const ANNOTATION = '@(?!interface\\b)[A-Za-z_$][\\w$.]*(?:\\([^)]*\\))?';
+const MODIFIER_LIST = `(?:(?:public|protected|private|abstract|final|static|sealed|non-sealed|strictfp|${ANNOTATION})\\s+)*`;
+const TYPE_KEYWORD = '(?:@interface|class|interface|enum|record)';
+const TYPE_NAME = '([A-Z_$][\\w$]*)';
+const DECLARATION_TAIL = '(?:[<({]|extends\\b|implements\\b|permits\\b)';
+const DECLARATION_RE = new RegExp(
+  `(?:^|\\n)[ \\t]*${MODIFIER_LIST}${TYPE_KEYWORD}\\s+${TYPE_NAME}\\s*${DECLARATION_TAIL}`,
+);
+const PUBLIC_DECLARATION_RE = new RegExp(
+  `(?:^|\\n)[ \\t]*(?:${ANNOTATION}\\s+)*public\\s+${MODIFIER_LIST}${TYPE_KEYWORD}\\s+${TYPE_NAME}\\s*${DECLARATION_TAIL}`,
+);
+
 let cached = null;
+
+export function hasJavaTypeDeclaration(source) {
+  return DECLARATION_RE.test(String(source || ''));
+}
+
+export function javaFileNameFor(source, fallback) {
+  const match = PUBLIC_DECLARATION_RE.exec(String(source || ''));
+  if (match) return `${match[1]}.java`;
+  const name = String(fallback || '');
+  return name || 'Sketch.java';
+}
 
 function listDirSafe(dir) {
   try {

@@ -195,16 +195,26 @@ export function matchClarifying(scenario, question) {
 }
 
 function scenarioFacts(scenario) {
+  const roundType = scenario.roundType || 'coding';
   const lines = [
     `Scenario: ${scenario.title}`,
+    `Round type: ${roundType}`,
     `Interviewer opening: ${scenario.intro}`,
     'Problem statement:',
     scenario.problemStatement,
     'Visible examples:',
     ...(scenario.examples || []).map((example) => `- ${example.input} => ${example.output}`),
+  ];
+  if (scenario.reproductionNote) {
+    lines.push('Reproduction note:', scenario.reproductionNote);
+  }
+  if (scenario.design?.constraints?.length) {
+    lines.push('Design constraints:', ...scenario.design.constraints.map((item) => `- ${item}`));
+  }
+  lines.push(
     'Interviewer-approved answers to clarifying questions:',
     ...(scenario.clarifyingQuestions || []).map((item) => `- ${item.topic}: ${item.answer}`),
-  ];
+  );
   return lines.join('\n');
 }
 
@@ -245,13 +255,18 @@ export async function clarifyingAnswer(scenario, question) {
 export async function adaptiveProbe(scenario, { code, phase, elapsedSeconds, usedProbes = [] }) {
   const used = new Set(usedProbes);
   const candidates = (scenario.probes || []).filter((probe) => probe.text && !used.has(probe.text));
+  const roundType = scenario.roundType || 'coding';
+  const probeStyle = roundType === 'design'
+    ? 'You are a senior engineer running an object-oriented design round. Ask exactly one short question about responsibilities, interfaces, extensibility, or stated trade-offs. Maximum 45 words. Do not give a design.'
+    : roundType === 'debugging'
+      ? 'You are a senior Java interviewer watching a candidate debug failing code. Ask exactly one short question about their hypothesis, the root cause, or the regression test. Maximum 45 words. Do not give the answer and do not write code.'
+      : 'You are a senior Java interviewer watching a candidate code. Ask exactly one short probing question about their current approach, edge cases, or trade-offs. Maximum 45 words. Do not give the answer and do not write code.';
 
   if (aiStatus().configured) {
     const text = await chat([
       {
         role: 'system',
-        content:
-          'You are a senior Java interviewer watching a candidate code. Ask exactly one short probing question about their current approach, edge cases, or trade-offs. Maximum 45 words. Do not give the answer and do not write code.',
+        content: probeStyle,
       },
       {
         role: 'user',
@@ -273,36 +288,59 @@ export async function adaptiveProbe(scenario, { code, phase, elapsedSeconds, use
   return { text, source: 'scripted' };
 }
 
-function fallbackNarrative(summary) {
+function fallbackNarrative(summary, scenario = {}) {
+  const roundType = scenario.roundType || summary?.roundType || 'coding';
   const base = summary?.tests?.base || { passed: 0, total: 0 };
   const change = summary?.tests?.change || { passed: 0, total: 0 };
   const score = Math.round(summary?.score || 0);
   const hints = summary?.hintsUsed ?? 0;
   const missed = summary?.missed || [];
   const parts = [];
-  parts.push(
-    `You finished with a score of ${score}/100. The base suite passed ${base.passed} of ${base.total} tests and the change request passed ${change.passed} of ${change.total}.`,
-  );
+  if (roundType === 'design') {
+    parts.push(
+      `You finished the design round with a score of ${score}/100. ${summary?.tests?.base?.compiled ? 'Your class sketch compiled; this is informational and does not change the score.' : 'Your sketch did not need to compile for this round.'}`,
+    );
+    parts.push(
+      `The debrief scored your design notes and spoken answers against structure, separation of responsibilities, interfaces, extensibility, and stated trade-offs. Use the reference design to compare the boundaries you chose.`,
+    );
+  } else if (roundType === 'debugging') {
+    const diagnosis = summary?.diagnosis || {};
+    parts.push(
+      `You finished with a score of ${score}/100. The base suite passed ${base.passed} of ${base.total} tests, the change request passed ${change.passed} of ${change.total}, and your root-cause note matched ${diagnosis.matched ?? 0} of ${diagnosis.total ?? 0} diagnosis signals.`,
+    );
+  } else {
+    parts.push(
+      `You finished with a score of ${score}/100. The base suite passed ${base.passed} of ${base.total} tests and the change request passed ${change.passed} of ${change.total}.`,
+    );
+  }
   if (missed.length) {
     parts.push(`The criteria still short of strong are: ${missed.join('; ')}. Name each one back before you retry, then decide the smallest change that would move it.`);
   } else {
     parts.push('Every rubric criterion reached the strong band. That is the level to reproduce under a real clock, not just once.');
   }
   parts.push(
-    `You used ${hints} hint${hints === 1 ? '' : 's'}. In a real interview, ask the clarifying questions early and say your edge cases out loud before writing code.`,
+    roundType === 'design'
+      ? `You used ${hints} hint${hints === 1 ? '' : 's'}. In a real design round, state the constraint you are optimising for and the trade-off you are accepting before drawing class boxes.`
+      : `You used ${hints} hint${hints === 1 ? '' : 's'}. In a real interview, ask the clarifying questions early and say your edge cases out loud before writing code.`,
   );
   return parts.join('\n\n');
 }
 
 export async function debriefNarrative(scenario, summary) {
-  const fallback = { text: fallbackNarrative(summary), source: 'scripted' };
+  const fallback = { text: fallbackNarrative(summary, scenario), source: 'scripted' };
   if (!aiStatus().configured) return fallback;
+
+  const roundType = scenario.roundType || 'coding';
+  const system = roundType === 'design'
+    ? 'You are a senior engineer giving a concise debrief after an object-oriented design round. Write three short paragraphs: what went well, the most important gaps in responsibilities, interfaces, extensibility, or trade-offs, and one concrete next practice step. Be direct and specific to the evidence. Never write code and never invent results.'
+    : roundType === 'debugging'
+      ? 'You are a senior Java interviewer giving a concise debrief after a debugging round. Write three short paragraphs: what went well, the quality of the diagnosis and the fix, and one concrete next practice step. Be direct and specific to the evidence. Never write implementation code and never invent test results.'
+      : 'You are a senior Java interviewer giving a concise post-interview debrief. Write three short paragraphs: what went well, the most important gaps, and one concrete next practice step. Be direct and specific to the evidence. Never write implementation code and never invent test results.';
 
   const text = await chat([
     {
       role: 'system',
-      content:
-        'You are a senior Java interviewer giving a concise post-interview debrief. Write three short paragraphs: what went well, the most important gaps, and one concrete next practice step. Be direct and specific to the evidence. Never write implementation code and never invent test results.',
+      content: system,
     },
     {
       role: 'user',

@@ -2,8 +2,8 @@ import http from 'node:http';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { detectJdk, runSubmission } from './lib/java.mjs';
-import { getScenario, loadScenarios, publicScenario, scenarioSummary } from './lib/scenarios.mjs';
+import { compileOnly, detectJdk, hasJavaTypeDeclaration, javaFileNameFor, runSubmission } from './lib/java.mjs';
+import { getScenario, loadScenarios, publicScenario, roundTypeOf, scenarioSummary } from './lib/scenarios.mjs';
 import { aiStatus, clarifyingAnswer, adaptiveProbe, debriefNarrative } from './lib/ai.mjs';
 import { appendProgress, readProgress } from './lib/progress.mjs';
 
@@ -38,6 +38,7 @@ function isJsonContentType(request) {
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
@@ -147,11 +148,54 @@ async function handleApi(request, response, url) {
       return true;
     }
     const source = safeString(body.source, 500000);
+    const set = body.phase === 'change' ? 'change' : 'base';
+    if (roundTypeOf(scenario) === 'design') {
+      const jdk = detectJdk();
+      if (!jdk.available) {
+        sendJson(response, 200, {
+          set,
+          design: true,
+          available: false,
+          compiled: false,
+          sketch: 'unavailable',
+          compileOutput: 'No JDK is available, so the optional class sketch cannot be checked. Design rounds run without a JDK; your design notes still score normally.',
+          results: [],
+        });
+        return true;
+      }
+      if (!hasJavaTypeDeclaration(source) || !scenario.fileName) {
+        sendJson(response, 200, {
+          set,
+          design: true,
+          available: true,
+          compiled: false,
+          sketch: 'notes',
+          compileOutput: 'No compiling class sketch found; design notes do not need to compile.',
+          results: [],
+        });
+        return true;
+      }
+      const compiled = await compileOnly({
+        source,
+        fileName: javaFileNameFor(source, scenario.fileName),
+        testSupport: '',
+        tests: [],
+      });
+      sendJson(response, 200, {
+        set,
+        design: true,
+        available: true,
+        compiled: compiled.ok,
+        sketch: compiled.ok ? 'compiled' : 'failed',
+        compileOutput: compiled.output,
+        results: [],
+      });
+      return true;
+    }
     if (!source.trim()) {
       sendJson(response, 400, { error: 'No candidate source code was supplied.' });
       return true;
     }
-    const set = body.phase === 'change' ? 'change' : 'base';
     if (set === 'change' && !scenario.changeRequest) {
       sendJson(response, 400, { error: 'This scenario has no change request.' });
       return true;

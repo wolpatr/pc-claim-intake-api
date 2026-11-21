@@ -1,0 +1,231 @@
+{
+  "id": "java-lru-cache-debug",
+  "title": "Debug an LRU cache for a claim lookup",
+  "tagline": "The cache evicts the wrong entry after a read. Diagnose the ordering defect, fix it, then add recency and resize operations.",
+  "difficulty": "Senior",
+  "roundType": "debugging",
+  "topics": [
+    "Java",
+    "Debugging",
+    "Collections",
+    "LinkedHashMap"
+  ],
+  "phaseTimes": {
+    "brief": 5,
+    "implement": 20,
+    "test": 12,
+    "change": 13,
+    "debrief": 10
+  },
+  "intro": "This round is a bug fix in core Java. A claim lookup cache is evicting recently read entries and keeping stale ones. You have the broken class, a failing test, and the ticket. Explain the root cause before changing the constructor.",
+  "reproductionNote": "Support ticket CACHE-77: \"Capacity 2. Put A, put B, read A, put C. B should be evicted because A was read most recently, but the cache keeps B and evicts A. A second report says updating an existing key behaves inconsistently under load.\" Repro: run LruEvictionTest in the hidden suite.",
+  "diagnosis": {
+    "prompt": "Explain the root cause in your own words: why does a read not affect eviction, and what is the correct ordering model?",
+    "keywords": [
+      "access order",
+      "insertion order",
+      "least recently used",
+      "recency",
+      "get",
+      "refresh",
+      "eviction",
+      "oldest"
+    ],
+    "strongAnswer": "The LinkedHashMap was built in insertion order, so get does not move a key to the most-recent position and eviction removes the oldest insertion rather than the least recently used entry. It must be constructed in access order."
+  },
+  "clarifyingQuestions": [
+    {
+      "id": "recency",
+      "topic": "Recency definition",
+      "question": "Does a read count as use for eviction?",
+      "keywords": [
+        "read",
+        "get",
+        "use",
+        "recency",
+        "evict"
+      ],
+      "answer": "Yes. A successful get and an update through put both count as use. The least recently used entry is evicted first.",
+      "coach": "Ask what counts as use before picking a data structure."
+    },
+    {
+      "id": "order",
+      "topic": "Eviction order",
+      "question": "Which entry should be evicted when the cache is over capacity?",
+      "keywords": [
+        "evict",
+        "least recently used",
+        "oldest",
+        "capacity"
+      ],
+      "answer": "Evict the least recently used entry, not the oldest inserted entry. That is the LRU contract.",
+      "coach": "Ask for the eviction order explicitly."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "What follow-up operations are expected?",
+      "keywords": [
+        "change",
+        "recency",
+        "resize",
+        "keys"
+      ],
+      "answer": "Expect a way to list keys from most recently used to least recently used, and a resize operation that evicts until the cache fits the new capacity.",
+      "coach": "Ask how the follow-up exposes recency and changes capacity."
+    },
+    {
+      "id": "regression",
+      "topic": "Regression test",
+      "question": "Is there a regression test for the ticket?",
+      "keywords": [
+        "regression",
+        "test",
+        "ticket",
+        "read"
+      ],
+      "answer": "Yes. A hidden regression test reads a key and then asserts that the other key is evicted. Reproduce it before editing.",
+      "coach": "Ask which test pins the reported behaviour."
+    }
+  ],
+  "clarifyingFallback": "Assume LRU semantics: reads and updates refresh recency, capacity is a hard limit, and invalid capacities throw IllegalArgumentException. Reproduce before fixing.",
+  "problemStatement": "### Context\n\nLruCache backs a claim lookup table. The ticket says a recently read entry is evicted while a stale entry survives.\n\n### Your task\n\nRead the broken class, reproduce the failure, identify the root cause, and fix it without changing the public method signatures.\n\n### Rules\n\n- Capacity is a hard limit and must be positive; the constructor throws IllegalArgumentException otherwise.\n- get returns the value or null.\n- put inserts or updates and then evicts the least recently used entry if over capacity.\n- A successful get and an update both count as use.\n- containsKey and size must stay consistent with the map.\n\n### Reproduction\n\nThe ticket and the failing test are above the editor. Explain the root cause before editing.",
+  "fileName": "LruCache.java",
+  "starterCode": "import java.util.Iterator;\nimport java.util.LinkedHashMap;\n\npublic final class LruCache<K, V> {\n\n    private final int capacity;\n    private final LinkedHashMap<K, V> map;\n\n    public LruCache(int capacity) {\n        if (capacity <= 0) {\n            throw new IllegalArgumentException(\"capacity must be positive\");\n        }\n        this.capacity = capacity;\n        this.map = new LinkedHashMap<>(capacity, 0.75f, false);\n    }\n\n    public V get(K key) {\n        return map.get(key);\n    }\n\n    public void put(K key, V value) {\n        map.put(key, value);\n        evict();\n    }\n\n    public int size() {\n        return map.size();\n    }\n\n    public boolean containsKey(K key) {\n        return map.containsKey(key);\n    }\n\n    private void evict() {\n        Iterator<K> iterator = map.keySet().iterator();\n        while (map.size() > capacity && iterator.hasNext()) {\n            iterator.next();\n            iterator.remove();\n        }\n    }\n}\n",
+  "testSupport": "import java.math.BigDecimal;\nimport java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void money(String expected, BigDecimal actual, String what) {\n        BigDecimal wanted = new BigDecimal(expected);\n        if (actual == null || actual.compareTo(wanted) != 0) {\n            throw new AssertionError(what + \" | expected <\" + wanted + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "examples": [
+    {
+      "input": "capacity 2, put A, put B, get A, put C",
+      "output": "B is evicted; A and C remain"
+    },
+    {
+      "input": "capacity 2, put A=1, put B=1, put A=2",
+      "output": "size 2, A=2, B=1"
+    },
+    {
+      "input": "capacity 0",
+      "output": "IllegalArgumentException"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "reading a key refreshes it before eviction",
+      "className": "LruEvictionTest",
+      "regression": true,
+      "code": "public class LruEvictionTest {\n    public static void main(String[] args) {\n        var cache = new LruCache<String, Integer>(2);\n        cache.put(\"A\", 1);\n        cache.put(\"B\", 2);\n        TestSupport.eq(Integer.valueOf(1), cache.get(\"A\"), \"read A\");\n        cache.put(\"C\", 3);\n        TestSupport.check(cache.containsKey(\"A\"), \"A should survive because it was read\");\n        TestSupport.check(!cache.containsKey(\"B\"), \"B should be evicted as least recently used\");\n        TestSupport.check(cache.containsKey(\"C\"), \"C should be present\");\n        System.out.println(\"PASS: reading a key refreshes it before eviction\");\n    }\n}\n"
+    },
+    {
+      "name": "updating an existing key does not grow the cache",
+      "className": "UpdateExistingTest",
+      "code": "public class UpdateExistingTest {\n    public static void main(String[] args) {\n        var cache = new LruCache<String, Integer>(2);\n        cache.put(\"A\", 1);\n        cache.put(\"B\", 2);\n        cache.put(\"A\", 9);\n        TestSupport.eq(2, cache.size(), \"size\");\n        TestSupport.eq(Integer.valueOf(9), cache.get(\"A\"), \"updated A\");\n        TestSupport.eq(Integer.valueOf(2), cache.get(\"B\"), \"B survives\");\n        System.out.println(\"PASS: updating an existing key does not grow the cache\");\n    }\n}\n"
+    },
+    {
+      "name": "missing keys return null",
+      "className": "MissingKeyTest",
+      "code": "public class MissingKeyTest {\n    public static void main(String[] args) {\n        var cache = new LruCache<String, Integer>(2);\n        TestSupport.eq(null, cache.get(\"missing\"), \"missing key\");\n        TestSupport.check(!cache.containsKey(\"missing\"), \"missing key absent\");\n        System.out.println(\"PASS: missing keys return null\");\n    }\n}\n"
+    },
+    {
+      "name": "invalid capacities are rejected",
+      "className": "ConstructorTest",
+      "code": "public class ConstructorTest {\n    public static void main(String[] args) {\n        TestSupport.throwsType(IllegalArgumentException.class, () -> new LruCache<String, Integer>(0), \"zero capacity\");\n        TestSupport.throwsType(IllegalArgumentException.class, () -> new LruCache<String, Integer>(-1), \"negative capacity\");\n        System.out.println(\"PASS: invalid capacities are rejected\");\n    }\n}\n"
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Expose recency order and support resizing the cache.",
+    "statement": "### Change request\n\nThe observability screen wants the cache to expose its recency order, and operations wants to resize a live cache.\n\nAdd:\n\n- List<K> keysByRecency(): most recently used first.\n- void resize(int newCapacity): validate the new capacity, set it, and evict least recently used entries until the cache fits.\n\nRequirements:\n\n- A non-positive new capacity throws IllegalArgumentException and leaves the cache unchanged.\n- keysByRecency returns the keys from most recently used to least recently used.\n- Existing get, put, containsKey, and size behaviour must keep working.",
+    "starterCode": "import java.util.ArrayList;\nimport java.util.Iterator;\nimport java.util.LinkedHashMap;\nimport java.util.List;\n\npublic final class LruCache<K, V> {\n\n    private int capacity;\n    private final LinkedHashMap<K, V> map;\n\n    public LruCache(int capacity) {\n        this.capacity = checked(capacity);\n        this.map = new LinkedHashMap<>(capacity, 0.75f, true);\n    }\n\n    private static int checked(int capacity) {\n        if (capacity <= 0) {\n            throw new IllegalArgumentException(\"capacity must be positive\");\n        }\n        return capacity;\n    }\n\n    public V get(K key) {\n        return map.get(key);\n    }\n\n    public void put(K key, V value) {\n        map.put(key, value);\n        evict();\n    }\n\n    public int size() {\n        return map.size();\n    }\n\n    public boolean containsKey(K key) {\n        return map.containsKey(key);\n    }\n\n    public List<K> keysByRecency() {\n        // TODO: return keys from most recently used to least recently used.\n        return new ArrayList<>();\n    }\n\n    public void resize(int newCapacity) {\n        // TODO: validate the new capacity and evict the least recently used entries until it fits.\n    }\n\n    private void evict() {\n        Iterator<K> iterator = map.keySet().iterator();\n        while (map.size() > capacity && iterator.hasNext()) {\n            iterator.next();\n            iterator.remove();\n        }\n    }\n}\n",
+    "fileName": "LruCache.java",
+    "hiddenTests": [
+      {
+        "name": "recency order puts the most recent key first",
+        "className": "RecencyOrderTest",
+        "code": "import java.util.*;\n\npublic class RecencyOrderTest {\n    public static void main(String[] args) {\n        var cache = new LruCache<String, Integer>(3);\n        cache.put(\"A\", 1);\n        cache.put(\"B\", 2);\n        cache.put(\"C\", 3);\n        cache.get(\"A\");\n        TestSupport.eq(List.of(\"A\", \"C\", \"B\"), cache.keysByRecency(), \"recency order\");\n        System.out.println(\"PASS: recency order puts the most recent key first\");\n    }\n}\n"
+      },
+      {
+        "name": "resize evicts least recently used entries",
+        "className": "ResizeTest",
+        "code": "import java.util.*;\n\npublic class ResizeTest {\n    public static void main(String[] args) {\n        var cache = new LruCache<String, Integer>(3);\n        cache.put(\"A\", 1);\n        cache.put(\"B\", 2);\n        cache.put(\"C\", 3);\n        cache.get(\"A\");\n        cache.resize(2);\n        TestSupport.eq(2, cache.size(), \"new size\");\n        TestSupport.check(cache.containsKey(\"A\"), \"A was read most recently\");\n        TestSupport.check(cache.containsKey(\"C\"), \"C is next most recent\");\n        TestSupport.check(!cache.containsKey(\"B\"), \"B is least recent\");\n        TestSupport.eq(List.of(\"A\", \"C\"), cache.keysByRecency(), \"order after resize\");\n        System.out.println(\"PASS: resize evicts least recently used entries\");\n    }\n}\n"
+      },
+      {
+        "name": "invalid resize is rejected and leaves the cache intact",
+        "className": "ResizeInvalidTest",
+        "code": "public class ResizeInvalidTest {\n    public static void main(String[] args) {\n        var cache = new LruCache<String, Integer>(2);\n        cache.put(\"A\", 1);\n        cache.put(\"B\", 2);\n        TestSupport.throwsType(IllegalArgumentException.class, () -> cache.resize(0), \"zero resize\");\n        TestSupport.eq(2, cache.size(), \"size unchanged\");\n        TestSupport.check(cache.containsKey(\"A\") && cache.containsKey(\"B\"), \"entries unchanged\");\n        System.out.println(\"PASS: invalid resize is rejected and leaves the cache intact\");\n    }\n}\n"
+      }
+    ]
+  },
+  "probes": [
+    {
+      "atMinute": 3,
+      "phase": "implement",
+      "text": "Reproduce CACHE-77 in one sentence: which key should have been evicted, and which one was?"
+    },
+    {
+      "atMinute": 10,
+      "phase": "implement",
+      "text": "State the root cause in your own words, then name the constructor flag or data structure that fixes it."
+    },
+    {
+      "atMinute": 16,
+      "phase": "test",
+      "text": "How will you prove that get refreshes recency without breaking update behaviour?"
+    }
+  ],
+  "fallbackProbe": "What is the difference between insertion order and access order in the structure you are using?",
+  "phasePrompts": {
+    "brief": "Read the ticket and the class, then ask me the questions you would ask a real interviewer. Reproduce before editing.",
+    "implement": "The diagnosis timer is running. Narrate your hypothesis, isolate the ordering defect, and say when you want to run the tests.",
+    "test": "Run the tests. Confirm the regression fails for the reason you predicted, then fix it.",
+    "change": "Here is the change request. Keep the corrected LRU semantics intact while exposing and resizing the cache.",
+    "debrief": "Time is up. Let us review the diagnosis, the fix, the regression test, and the rubric."
+  },
+  "hints": [
+    "The container already supports recency. Check how it was constructed before writing a new eviction loop.",
+    "The third constructor argument of LinkedHashMap controls access order. With access order on, get refreshes recency for free.",
+    "For keysByRecency, key iteration runs least recent to most recent, so reverse it. For resize, validate first, then evict until size fits."
+  ],
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 30,
+      "criterion": "LRU behaviour is fixed and the hidden suite passes",
+      "strongAnswer": "Reads refresh recency, updates do not grow the cache, and missing keys and invalid capacities behave correctly."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 20,
+      "criterion": "Recency and resize operations pass the hidden suite",
+      "strongAnswer": "keysByRecency is most-recent first, resize evicts correctly, and an invalid resize leaves the cache untouched."
+    },
+    {
+      "id": "diagnosis",
+      "type": "diagnosis",
+      "weight": 20,
+      "criterion": "Diagnosis identifies the ordering defect",
+      "strongAnswer": "Names insertion order versus access order, explains why get did not refresh recency, and predicts the eviction failure."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 15,
+      "criterion": "Clarified use, eviction, and follow-up",
+      "strongAnswer": "Asked whether reads count as use, which entry evicts, and what the change request exposes."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 5,
+      "criterion": "Debugged independently",
+      "strongAnswer": "Found the ordering defect from the reproduction with no hints or one hint after a genuine attempt."
+    },
+    {
+      "id": "efficiency",
+      "type": "efficiency",
+      "weight": 10,
+      "criterion": "Worked within the phase budget",
+      "strongAnswer": "Reproduced, fixed, and extended the cache without destabilizing the base behaviour."
+    }
+  ],
+  "referenceSolution": "import java.util.ArrayList;\nimport java.util.Collections;\nimport java.util.Iterator;\nimport java.util.LinkedHashMap;\nimport java.util.List;\n\npublic final class LruCache<K, V> {\n\n    private int capacity;\n    private final LinkedHashMap<K, V> map;\n\n    public LruCache(int capacity) {\n        this.capacity = checked(capacity);\n        this.map = new LinkedHashMap<>(capacity, 0.75f, true);\n    }\n\n    private static int checked(int capacity) {\n        if (capacity <= 0) {\n            throw new IllegalArgumentException(\"capacity must be positive\");\n        }\n        return capacity;\n    }\n\n    public V get(K key) {\n        return map.get(key);\n    }\n\n    public void put(K key, V value) {\n        map.put(key, value);\n        evict();\n    }\n\n    public int size() {\n        return map.size();\n    }\n\n    public boolean containsKey(K key) {\n        return map.containsKey(key);\n    }\n\n    public List<K> keysByRecency() {\n        List<K> keys = new ArrayList<>(map.keySet());\n        Collections.reverse(keys);\n        return keys;\n    }\n\n    public void resize(int newCapacity) {\n        this.capacity = checked(newCapacity);\n        evict();\n    }\n\n    private void evict() {\n        Iterator<K> iterator = map.keySet().iterator();\n        while (map.size() > capacity && iterator.hasNext()) {\n            iterator.next();\n            iterator.remove();\n        }\n    }\n}\n"
+}

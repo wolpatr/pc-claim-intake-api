@@ -1,0 +1,235 @@
+{
+  "id": "claim-deductible-debug",
+  "title": "Debug a claim deductible settlement",
+  "tagline": "Reproduce a support ticket, find why net payable goes negative, and fix the settlement rule.",
+  "difficulty": "Intermediate",
+  "roundType": "debugging",
+  "topics": [
+    "Claim domain",
+    "Debugging",
+    "Money",
+    "Java"
+  ],
+  "phaseTimes": {
+    "brief": 5,
+    "implement": 20,
+    "test": 12,
+    "change": 13,
+    "debrief": 10
+  },
+  "intro": "This round is a bug fix. ClaimSettlement.netPayable is producing impossible payouts on the finance report. I will give you the support ticket, the broken code, and the failing tests. Diagnose the root cause before you change anything.",
+  "reproductionNote": "Support ticket FIN-4412: \"Claim approved 500.00 with a 750.00 deductible settled as -250.00. A second claim approved 600.00 with deductible -100.00 settled as 700.00. Finance rejects both. A claim with no deductible pays correctly.\" Steps: run ClaimSettlement.netPayable with those pairs and compare with the settlement rules.",
+  "diagnosis": {
+    "prompt": "Explain the root cause in your own words: what assumption in netPayable is wrong, and what rule should replace it?",
+    "keywords": [
+      "clamp",
+      "negative",
+      "deductible",
+      "floor",
+      "subtract",
+      "zero",
+      "below zero"
+    ],
+    "strongAnswer": "The method subtracts any deductible, even when it exceeds the approved amount or is negative, so the result can go below zero or above the approved amount. Net payable must clamp to zero and treat a negative deductible as zero."
+  },
+  "clarifyingQuestions": [
+    {
+      "id": "rule",
+      "topic": "Settlement rule",
+      "question": "What exactly is net payable when the deductible is larger than the approved amount?",
+      "keywords": [
+        "larger",
+        "exceeds",
+        "net",
+        "payable",
+        "zero"
+      ],
+      "answer": "Approved minus deductible, but never below zero. If the deductible meets or exceeds the approved amount, net payable is zero.",
+      "coach": "Ask for the boundary rule instead of assuming plain subtraction."
+    },
+    {
+      "id": "negative",
+      "topic": "Negative values",
+      "question": "How should a negative deductible or negative approved amount be treated?",
+      "keywords": [
+        "negative",
+        "deductible",
+        "approved",
+        "zero"
+      ],
+      "answer": "A negative approved amount settles to zero. A negative deductible is treated as zero, so the full approved amount is payable.",
+      "coach": "Ask about invalid money values, especially negative deductibles."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "What follow-up change is coming?",
+      "keywords": [
+        "change",
+        "settle all",
+        "map",
+        "batch"
+      ],
+      "answer": "Expect a batch method that settles many claims from two maps of approved amounts and deductibles, reusing the corrected single-claim rule.",
+      "coach": "Ask how the fixed rule will be reused by the follow-up."
+    },
+    {
+      "id": "regression",
+      "topic": "Regression test",
+      "question": "Do you want a regression test for the ticket?",
+      "keywords": [
+        "regression",
+        "test",
+        "ticket",
+        "reproduce"
+      ],
+      "answer": "The hidden suite includes a regression test that pins the deductible-exceeds-approved case. Reproduce it first so you can prove the fix.",
+      "coach": "Ask whether the ticket becomes a permanent regression test."
+    }
+  ],
+  "clarifyingFallback": "Assume net payable is approved minus deductible, floored at zero, with non-positive approved amounts settling to zero and non-positive deductibles treated as zero. Reproduce the ticket before fixing.",
+  "problemStatement": "### Context\n\nClaimSettlement.netPayable is used by the finance report. A support ticket shows payouts that are negative or larger than the approved amount.\n\n### Your task\n\nRead the broken code, reproduce the failure, identify the root cause, and fix it without changing the method signature.\n\n### Rules\n\n- A null or non-positive approved amount settles to zero.\n- A null or non-positive deductible is treated as zero.\n- Net payable is approved minus deductible, but never below zero.\n- Use BigDecimal arithmetic and do not round.\n\n### Reproduction\n\nThe ticket and the failing test names are in the reproduction note above the editor. Start by explaining the failure, then fix it.",
+  "fileName": "ClaimSettlement.java",
+  "starterCode": "import java.math.BigDecimal;\n\npublic final class ClaimSettlement {\n\n    private ClaimSettlement() {\n    }\n\n    public static BigDecimal netPayable(BigDecimal approved, BigDecimal deductible) {\n        if (approved == null) {\n            return BigDecimal.ZERO;\n        }\n        BigDecimal applied = deductible == null ? BigDecimal.ZERO : deductible;\n        return approved.subtract(applied);\n    }\n}\n",
+  "testSupport": "import java.math.BigDecimal;\nimport java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void money(String expected, BigDecimal actual, String what) {\n        BigDecimal wanted = new BigDecimal(expected);\n        if (actual == null || actual.compareTo(wanted) != 0) {\n            throw new AssertionError(what + \" | expected <\" + wanted + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "examples": [
+    {
+      "input": "approved 500, deductible 100",
+      "output": "400"
+    },
+    {
+      "input": "approved 500, deductible 750",
+      "output": "0"
+    },
+    {
+      "input": "approved 600, deductible -100",
+      "output": "600"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "normal deduction reduces the payout",
+      "className": "NormalSettlementTest",
+      "code": "import java.math.BigDecimal;\n\npublic class NormalSettlementTest {\n    public static void main(String[] args) {\n        TestSupport.money(\"400\", ClaimSettlement.netPayable(new BigDecimal(\"500\"), new BigDecimal(\"100\")), \"normal settlement\");\n        System.out.println(\"PASS: normal deduction reduces the payout\");\n    }\n}\n"
+    },
+    {
+      "name": "matching deductible settles at zero",
+      "className": "FullDeductionTest",
+      "code": "import java.math.BigDecimal;\n\npublic class FullDeductionTest {\n    public static void main(String[] args) {\n        TestSupport.money(\"0\", ClaimSettlement.netPayable(new BigDecimal(\"500\"), new BigDecimal(\"500\")), \"full deduction\");\n        System.out.println(\"PASS: matching deductible settles at zero\");\n    }\n}\n"
+    },
+    {
+      "name": "deductible above approved clamps to zero",
+      "className": "DeductibleExceedsTest",
+      "regression": true,
+      "code": "import java.math.BigDecimal;\n\npublic class DeductibleExceedsTest {\n    public static void main(String[] args) {\n        TestSupport.money(\"0\", ClaimSettlement.netPayable(new BigDecimal(\"500\"), new BigDecimal(\"750\")), \"over-deducted claim\");\n        TestSupport.money(\"0\", ClaimSettlement.netPayable(new BigDecimal(\"100\"), new BigDecimal(\"1000\")), \"large deductible\");\n        System.out.println(\"PASS: deductible above approved clamps to zero\");\n    }\n}\n"
+    },
+    {
+      "name": "null deductible pays the full approved amount",
+      "className": "NullDeductibleTest",
+      "code": "import java.math.BigDecimal;\n\npublic class NullDeductibleTest {\n    public static void main(String[] args) {\n        TestSupport.money(\"500\", ClaimSettlement.netPayable(new BigDecimal(\"500\"), null), \"null deductible\");\n        TestSupport.money(\"0\", ClaimSettlement.netPayable(null, new BigDecimal(\"100\")), \"null approved\");\n        System.out.println(\"PASS: null deductible pays the full approved amount\");\n    }\n}\n"
+    },
+    {
+      "name": "negative deductible and approved amounts are safe",
+      "className": "InvalidAmountsTest",
+      "code": "import java.math.BigDecimal;\n\npublic class InvalidAmountsTest {\n    public static void main(String[] args) {\n        TestSupport.money(\"600\", ClaimSettlement.netPayable(new BigDecimal(\"600\"), new BigDecimal(\"-100\")), \"negative deductible\");\n        TestSupport.money(\"0\", ClaimSettlement.netPayable(new BigDecimal(\"-50\"), new BigDecimal(\"10\")), \"negative approved\");\n        System.out.println(\"PASS: negative deductible and approved amounts are safe\");\n    }\n}\n"
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Settle a batch of claims from approved and deductible maps.",
+    "statement": "### Change request\n\nFinance now sends a batch of claims.\n\nAdd:\n\nMap<String, BigDecimal> settleAll(Map<String, BigDecimal> approvedByClaim, Map<String, BigDecimal> deductibleByClaim)\n\nRequirements:\n\n- Return a TreeMap keyed by claim id, sorted ascending.\n- Every approved claim id appears in the result, even when its approved amount is null or non-positive.\n- A missing deductible for a claim is treated as zero.\n- A null approved map returns an empty map.\n- Reuse the corrected netPayable logic; do not duplicate the clamp rule.",
+    "starterCode": "import java.math.BigDecimal;\nimport java.util.Map;\nimport java.util.TreeMap;\n\npublic final class ClaimSettlement {\n\n    private ClaimSettlement() {\n    }\n\n    public static BigDecimal netPayable(BigDecimal approved, BigDecimal deductible) {\n        if (approved == null || approved.signum() <= 0) {\n            return BigDecimal.ZERO;\n        }\n        BigDecimal applied = deductible == null || deductible.signum() <= 0 ? BigDecimal.ZERO : deductible;\n        BigDecimal net = approved.subtract(applied);\n        return net.signum() < 0 ? BigDecimal.ZERO : net;\n    }\n\n    public static Map<String, BigDecimal> settleAll(Map<String, BigDecimal> approvedByClaim,\n            Map<String, BigDecimal> deductibleByClaim) {\n        // TODO: return a sorted map of claim id to clamped net payable.\n        return new TreeMap<>();\n    }\n}\n",
+    "fileName": "ClaimSettlement.java",
+    "hiddenTests": [
+      {
+        "name": "batch settlement returns clamped values in id order",
+        "className": "SettleAllTest",
+        "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class SettleAllTest {\n    public static void main(String[] args) {\n        Map<String, BigDecimal> approved = new LinkedHashMap<>();\n        approved.put(\"C-2\", new BigDecimal(\"500\"));\n        approved.put(\"C-1\", new BigDecimal(\"600\"));\n        Map<String, BigDecimal> deductibles = Map.of(\n                \"C-2\", new BigDecimal(\"750\"),\n                \"C-1\", new BigDecimal(\"-100\"));\n        var settled = ClaimSettlement.settleAll(approved, deductibles);\n        TestSupport.eq(List.of(\"C-1\", \"C-2\"), new ArrayList<>(settled.keySet()), \"sorted keys\");\n        TestSupport.money(\"600\", settled.get(\"C-1\"), \"negative deductible\");\n        TestSupport.money(\"0\", settled.get(\"C-2\"), \"over-deducted\");\n        System.out.println(\"PASS: batch settlement returns clamped values in id order\");\n    }\n}\n"
+      },
+      {
+        "name": "batch settlement handles null maps and missing deductibles",
+        "className": "SettleAllNullsTest",
+        "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class SettleAllNullsTest {\n    public static void main(String[] args) {\n        TestSupport.eq(Map.of(), ClaimSettlement.settleAll(null, null), \"null approved map\");\n        var settled = ClaimSettlement.settleAll(Map.of(\"C-1\", new BigDecimal(\"250\")), null);\n        TestSupport.money(\"250\", settled.get(\"C-1\"), \"missing deductible\");\n        System.out.println(\"PASS: batch settlement handles null maps and missing deductibles\");\n    }\n}\n"
+      },
+      {
+        "name": "batch settlement includes non-positive approvals",
+        "className": "SettleAllInvalidTest",
+        "code": "import java.math.BigDecimal;\nimport java.util.*;\n\npublic class SettleAllInvalidTest {\n    public static void main(String[] args) {\n        Map<String, BigDecimal> approved = new LinkedHashMap<>();\n        approved.put(\"C-1\", null);\n        approved.put(\"C-2\", new BigDecimal(\"-5\"));\n        var settled = ClaimSettlement.settleAll(approved, Map.of(\"C-2\", new BigDecimal(\"10\")));\n        TestSupport.money(\"0\", settled.get(\"C-1\"), \"null approved\");\n        TestSupport.money(\"0\", settled.get(\"C-2\"), \"negative approved\");\n        System.out.println(\"PASS: batch settlement includes non-positive approvals\");\n    }\n}\n"
+      }
+    ]
+  },
+  "probes": [
+    {
+      "atMinute": 3,
+      "phase": "implement",
+      "text": "Reproduce the ticket first. What is the smallest input that shows the defect?"
+    },
+    {
+      "atMinute": 10,
+      "phase": "implement",
+      "text": "State the root cause in your own words, then name the test that proves your fix."
+    },
+    {
+      "atMinute": 16,
+      "phase": "test",
+      "text": "Which existing behaviour could your clamp break, and which test guards it?"
+    }
+  ],
+  "fallbackProbe": "If you only fixed the subtraction, which second case in the ticket would still be wrong?",
+  "phasePrompts": {
+    "brief": "Read the ticket and the code, then ask me the questions you would ask a real interviewer. Reproduce the failure before editing.",
+    "implement": "The diagnosis timer is running. Narrate your hypotheses, isolate the defect, and say when you want to run the tests.",
+    "test": "Run the tests. Confirm the regression fails for the reason you predicted, then fix it.",
+    "change": "Here is the change request. Reuse the corrected rule rather than copying it.",
+    "debrief": "Time is up. Let us review the diagnosis, the fix, the regression test, and the rubric."
+  },
+  "hints": [
+    "Run the failing test first. Compare the actual value with the finance rule instead of reading the code top to bottom.",
+    "The defect is not the subtraction itself; it is the missing clamp and the treatment of a negative deductible.",
+    "Fix the single-claim rule, then call it from settleAll so the batch cannot drift from the base behaviour."
+  ],
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 30,
+      "criterion": "The defect is fixed and the hidden suite passes",
+      "strongAnswer": "Net payable clamps at zero, treats a negative deductible as zero, and handles null inputs safely."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 20,
+      "criterion": "Batch settlement passes the hidden suite",
+      "strongAnswer": "The batch method is sorted, null-safe, includes every approved id, and reuses the corrected rule."
+    },
+    {
+      "id": "diagnosis",
+      "type": "diagnosis",
+      "weight": 20,
+      "criterion": "Diagnosis identifies the root cause",
+      "strongAnswer": "Names the missing clamp and the negative-deductible assumption, and explains why the ticket values came out wrong."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 15,
+      "criterion": "Clarified the settlement rule and boundaries",
+      "strongAnswer": "Asked about deductible exceeding approved, negative values, and the regression test before editing."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 5,
+      "criterion": "Debugged independently",
+      "strongAnswer": "Reproduced and diagnosed the defect with no hints or one hint after a genuine attempt."
+    },
+    {
+      "id": "efficiency",
+      "type": "efficiency",
+      "weight": 10,
+      "criterion": "Worked within the phase budget",
+      "strongAnswer": "Reproduced, fixed, and added the batch method without destabilizing the base rule."
+    }
+  ],
+  "referenceSolution": "import java.math.BigDecimal;\nimport java.util.Map;\nimport java.util.TreeMap;\n\npublic final class ClaimSettlement {\n\n    private ClaimSettlement() {\n    }\n\n    public static BigDecimal netPayable(BigDecimal approved, BigDecimal deductible) {\n        if (approved == null || approved.signum() <= 0) {\n            return BigDecimal.ZERO;\n        }\n        BigDecimal applied = deductible == null || deductible.signum() <= 0 ? BigDecimal.ZERO : deductible;\n        BigDecimal net = approved.subtract(applied);\n        return net.signum() < 0 ? BigDecimal.ZERO : net;\n    }\n\n    public static Map<String, BigDecimal> settleAll(Map<String, BigDecimal> approvedByClaim,\n            Map<String, BigDecimal> deductibleByClaim) {\n        Map<String, BigDecimal> settled = new TreeMap<>();\n        if (approvedByClaim == null) {\n            return settled;\n        }\n        for (Map.Entry<String, BigDecimal> entry : approvedByClaim.entrySet()) {\n            if (entry.getKey() == null) {\n                continue;\n            }\n            BigDecimal deductible = deductibleByClaim == null ? null : deductibleByClaim.get(entry.getKey());\n            settled.put(entry.getKey(), netPayable(entry.getValue(), deductible));\n        }\n        return settled;\n    }\n}\n"
+}

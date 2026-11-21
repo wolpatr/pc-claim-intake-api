@@ -280,6 +280,23 @@ class ClaimControllerIntegrationTest {
     }
 
     @Test
+    void patchStatusRejectsStatusSpelledInAnotherCaseOrWithPadding() throws Exception {
+        String id = submitClaim(validClaim());
+
+        for (String status : new String[]{"open", "in_review", "Closed", " OPEN ", "IN_REVIEW "}) {
+            mockMvc.perform(patch("/claims/{id}/status", id)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\":\"" + status + "\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.fieldErrors[*].field", hasItems("status")));
+        }
+
+        mockMvc.perform(get("/claims/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("OPEN"));
+    }
+
+    @Test
     void patchStatusRejectsMissingStatus() throws Exception {
         String id = submitClaim(validClaim());
 

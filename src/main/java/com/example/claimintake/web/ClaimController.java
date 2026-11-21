@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Locale;
 
 @RestController
 @RequestMapping("/claims")
@@ -50,7 +49,7 @@ public class ClaimController {
             throw new ValidationException(List.of("status is required"));
         }
         try {
-            return ClaimStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
+            return ClaimStatus.valueOf(status);
         } catch (IllegalArgumentException exception) {
             throw new ValidationException(List.of(
                     "status must be one of OPEN, IN_REVIEW, CLOSED"));

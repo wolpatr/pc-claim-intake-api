@@ -7,6 +7,8 @@ import com.example.claimintake.repository.ClaimRepository;
 import com.example.claimintake.validation.ClaimValidator;
 import com.example.claimintake.validation.ValidationException;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -51,6 +53,18 @@ public final class ClaimServiceImpl implements ClaimService {
         }
         return repository.findById(claimId)
                 .orElseThrow(() -> new ClaimNotFoundException(claimId));
+    }
+
+    @Override
+    public List<Claim> list(ClaimStatus status) {
+        List<Claim> newestFirst = new ArrayList<>(repository.findAll());
+        Collections.reverse(newestFirst);
+        if (status == null) {
+            return List.copyOf(newestFirst);
+        }
+        return newestFirst.stream()
+                .filter(claim -> claim.getStatus() == status)
+                .toList();
     }
 
     @Override

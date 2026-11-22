@@ -249,6 +249,8 @@ node interview-sim/validate.mjs
 It checks the schema per round type, unique ids, non-empty rubrics and weights, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, the required scenario mix (at least 12 scenarios, 2 debugging and 2 design), that every code starter compiles and fails before completion, that each debugging regression test fails on the broken starter, that every reference solution passes both hidden suites, and that each design criterion's strong answer and reference design, plus each debugging diagnosis's strong answer, clear their evidence thresholds.
 It also checks that the shared quiz bank loads with eight topics and valid questions, that a standard exam selects 20 unique answer-free questions balanced across topics, that a focused selection returns exactly the requested ids, and that exam scoring and the tailored plan follow the documented rules.
 
+It first starts the server on a random port and verifies the installable web app: the manifest's MIME type and fields, the icon PNG sizes, and that the service worker precaches the app shell, leaves `/api` to the network, and serves the cached shell offline.
+
 ## Progress and history
 
 A completed debrief appends one JSON record under `interview-sim/progress/` per session.
@@ -270,8 +272,8 @@ Records stay on this machine.
 
 ```text
 interview-sim/
-  server.mjs            local HTTP server and API
-  validate.mjs          scenario and reference-solution validator
+  server.mjs            local HTTP and HTTPS server and API
+  validate.mjs          scenario, exam, and installable-app validator
   lib/
     ai.mjs              optional AI calls with scripted fallbacks
     exam.mjs            quiz bank loading, exam selection, scoring, tailored plan

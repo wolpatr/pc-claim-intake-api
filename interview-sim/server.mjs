@@ -6,6 +6,13 @@ import { compileOnly, detectJdk, hasJavaTypeDeclaration, javaFileNameFor, runSub
 import { getScenario, loadScenarios, publicScenario, roundTypeOf, scenarioSummary } from './lib/scenarios.mjs';
 import { aiStatus, clarifyingAnswer, adaptiveProbe, debriefNarrative } from './lib/ai.mjs';
 import { appendProgress, readProgress } from './lib/progress.mjs';
+import {
+  DEFAULT_EXAM_MINUTES,
+  loadQuizBank,
+  publicExamQuestion,
+  scoreExam,
+  selectExamQuestions,
+} from './lib/exam.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(here, 'public');
@@ -121,6 +128,59 @@ async function handleApi(request, response, url) {
 
   if (request.method === 'GET' && pathname === '/api/scenarios') {
     sendJson(response, 200, { scenarios: loadScenarios().map(scenarioSummary) });
+    return true;
+  }
+
+  if (request.method === 'GET' && pathname === '/api/exam') {
+    const idsParam = url.searchParams.get('ids');
+    const ids = idsParam === null
+      ? null
+      : idsParam.split(',').map((id) => id.trim()).filter(Boolean);
+    if (ids && !ids.length) {
+      sendJson(response, 400, { error: 'A focused retake needs at least one question id.' });
+      return true;
+    }
+    const questions = ids ? selectExamQuestions({ ids }) : selectExamQuestions();
+    if (!questions) {
+      sendJson(response, 400, { error: 'Unknown exam question id.' });
+      return true;
+    }
+    const bank = loadQuizBank();
+    sendJson(response, 200, {
+      mode: ids ? 'focused' : 'standard',
+      defaultMinutes: DEFAULT_EXAM_MINUTES,
+      count: questions.length,
+      topics: bank.topics.map((topic) => ({ id: topic.id, name: topic.name })),
+      questions: questions.map(publicExamQuestion),
+    });
+    return true;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/exam/score') {
+    const body = await readBody(request);
+    const rawIds = Array.isArray(body.questionIds) ? body.questionIds : [];
+    const questionIds = rawIds.slice(0, 200).map((id) => safeString(id, 80));
+    if (!questionIds.length) {
+      sendJson(response, 400, { error: 'questionIds must be a non-empty array.' });
+      return true;
+    }
+    if (new Set(questionIds).size !== questionIds.length) {
+      sendJson(response, 400, { error: 'questionIds must be unique.' });
+      return true;
+    }
+    const bankIds = new Set(loadQuizBank().questions.map((question) => question.id));
+    const unknown = questionIds.filter((id) => !bankIds.has(id));
+    if (unknown.length) {
+      sendJson(response, 400, { error: `Unknown question id: ${unknown[0]}` });
+      return true;
+    }
+    const answers = Array.isArray(body.answers)
+      ? body.answers.slice(0, 200).map((answer) => ({
+        id: safeString(answer?.id, 80),
+        selected: answer?.selected ?? null,
+      }))
+      : [];
+    sendJson(response, 200, scoreExam(questionIds, answers));
     return true;
   }
 

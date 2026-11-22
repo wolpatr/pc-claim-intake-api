@@ -1,5 +1,19 @@
 export const NOTE_THRESHOLD = 0.6;
 export const SOURCE_THRESHOLD = 0.75;
+export const GRADE_BANDS = [
+  { min: 85, label: 'Strong hire signal' },
+  { min: 70, label: 'Solid, with gaps' },
+  { min: 50, label: 'Developing' },
+  { min: 0, label: 'Needs another pass' },
+];
+
+export function gradeForPercentage(value) {
+  const percentage = Number.isFinite(Number(value)) ? Number(value) : 0;
+  for (const band of GRADE_BANDS) {
+    if (percentage >= band.min) return band.label;
+  }
+  return GRADE_BANDS[GRADE_BANDS.length - 1].label;
+}
 
 export function stemToken(word) {
   if (word.length > 4 && word.endsWith('ing')) return word.slice(0, -3);

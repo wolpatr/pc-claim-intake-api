@@ -61,7 +61,8 @@ A separate offline quiz for self-testing this project and the study plan lives i
 
 ## Interview simulator
 
-A timed coding, debugging, and object-oriented design interview simulator for Java practice lives in
+A timed coding, debugging, and object-oriented design interview simulator for Java practice, with a
+multiple-choice exam mode and voice controls, lives in
 [`interview-sim/`](interview-sim/README.md). It runs your code locally, interrupts with probes,
 adds a change or constraint request, and scores a debrief. Start it with
 `node interview-sim/server.mjs` and open http://127.0.0.1:4321.

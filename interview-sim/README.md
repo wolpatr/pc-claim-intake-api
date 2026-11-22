@@ -1,12 +1,16 @@
 # Interview simulator
 
-A local, single-page interview preparation system for Java practice. Every round keeps the same five-phase shape with manual advance, but the labels and scoring adapt to the round type:
+A local, single-page interview preparation system for Java practice.
+Every round keeps the same five-phase shape with manual advance, but the labels and scoring adapt to the round type:
 
 - **coding** - brief and clarify, implement from starter code, run hidden tests, absorb a change request, then debrief. This is the version 1 round.
 - **debugging** - brief and reproduce, diagnose the defect, fix and verify against failing tests, harden with a second change, then debrief. A root-cause note is scored separately from the fix.
 - **design** - brief and clarify, write object-oriented design notes or a class sketch, review the sketch, answer a constraint change, then debrief against a reference design. Java execution is not required; whether the class sketch compiles is reported as informational and does not affect the score.
 
-Every scenario declares a `roundType`; version 1 scenarios that omit it default to `coding`. The interviewer is a scripted scenario spine with an optional AI layer. Without an API key everything still works offline.
+Every scenario declares a `roundType`; version 1 scenarios that omit it default to `coding`.
+The interviewer is a scripted scenario spine with an optional AI layer.
+Without an API key everything still works offline.
+The exam is a separate timed multiple-choice mode built from the repository question bank; it needs neither a JDK nor AI.
 
 ## Requirements
 
@@ -82,6 +86,42 @@ Privacy note: when AI is enabled, the clarifying question, the current editor co
 - `Run tests` compiles and runs the hidden suite for the current phase. Test output is shown in the console.
 - In debugging rounds, the root-cause note above the console records your diagnosis in your own words and is scored separately from the fix.
 - In design rounds, `Check sketch (optional)` compiles the editor contents under the name of the sketch's first public type, falling back to the scenario's file name when no public type is declared. It reports the result as informational. Design notes do not need to compile, the sketch does not affect the score, and the round runs without a JDK.
+
+## Exam mode
+
+The start screen offers a timed exam beside scenario practice.
+The exam draws 20 unique questions from `quiz/questions.js`, round-robin across the eight topics and randomized within each topic.
+Questions are multiple-choice or true-false, with no hints, no AI interviewer, and no answers or explanations revealed before submission.
+Set the duration before starting; the default is 25 minutes, and the countdown uses active time (it pauses while the exam tab is hidden or when you press Pause).
+
+The exam shows one question at a time with a visible progress count.
+Use Previous and Next to move around, change answers until you submit, and press Submit exam when ready.
+When the timer reaches zero the exam submits automatically and says so.
+
+After submission the feedback report shows the total correct, the percentage, the same grade bands used by scenario debriefs, and a correct/total breakdown for every topic.
+For each incorrect answer it repeats the question, your selected answer, the correct answer, and the bank's explanation, and it names the areas you did incorrectly.
+The report is keyboard accessible and announces the result in a live region.
+
+The same feedback builds a tailored remediation plan.
+Topics are ranked by the number of incorrect answers, with ties broken by the lower accuracy, and each entry lists the questions that were missed.
+Start focused retake begins a new exam containing exactly those missed questions and reports its result the same way.
+The server exposes `GET /api/exam` for questions without answers and `POST /api/exam/score` for a submitted answer set.
+Both routes sit behind the same local-origin, host-header, and JSON content-type guards as the other API routes.
+
+## Voice controls
+
+Each interviewer message has a Play control that reads it aloud with `window.speechSynthesis` and locally installed voices.
+The briefing opening and the exam feedback summary have their own Play controls.
+The auto-speak toggle in the top bar speaks each new interviewer message automatically, and the preference is stored in `localStorage` when storage is available.
+Pressing a Play control or turning auto-speak off interrupts the current utterance, while the auto-speak toggle queues each new interviewer message so a burst of them is read in order; speech never blocks the text UI.
+
+The microphone button beside the question input uses `window.SpeechRecognition` or `webkitSpeechRecognition` for dictation.
+While listening it shows the interim transcript, and on the final result it inserts the transcript into the input without sending the message.
+Press the microphone again to stop; permission denial, unsupported browsers, and recognition errors show a clear inline message and leave the text input working.
+
+Both features fall back to text-only with an explicit message when the browser does not support them.
+Speech recognition may send audio to the browser vendor's online service, while speech synthesis uses locally installed voices.
+The AI key stays server-only and never reaches the browser.
 
 ## Scenarios
 
@@ -160,10 +200,16 @@ node interview-sim/validate.mjs
 ```
 
 It checks the schema per round type, unique ids, non-empty rubrics and weights, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, the required scenario mix (at least 12 scenarios, 2 debugging and 2 design), that every code starter compiles and fails before completion, that each debugging regression test fails on the broken starter, that every reference solution passes both hidden suites, and that each design criterion's strong answer and reference design, plus each debugging diagnosis's strong answer, clear their evidence thresholds.
+It also checks that the shared quiz bank loads with eight topics and valid questions, that a standard exam selects 20 unique answer-free questions balanced across topics, that a focused selection returns exactly the requested ids, and that exam scoring and the tailored plan follow the documented rules.
 
 ## Progress and history
 
-A completed debrief appends one JSON record under `interview-sim/progress/` per session. That directory is gitignored; only `.gitkeep` is tracked. Each record carries the round type, rubric evidence, test results, and sketch compile result where relevant. The `History` button shows completed sessions, per-topic averages, and the weakest topics. Records stay on this machine.
+A completed debrief appends one JSON record under `interview-sim/progress/` per session.
+A submitted exam appends its own record there with `kind: "exam"`, the score, topic breakdown, missed question ids, and the tailored plan.
+That directory is gitignored; only `.gitkeep` is tracked.
+Each scenario record carries the round type, rubric evidence, test results, and sketch compile result where relevant.
+The `History` button shows completed sessions and exam attempts, scenario-session per-topic averages and weakest topics, and the latest tailored plan, with a button to start that plan's focused retake.
+Records stay on this machine.
 
 ## Local-only and sandbox limitations
 
@@ -181,6 +227,7 @@ interview-sim/
   validate.mjs          scenario and reference-solution validator
   lib/
     ai.mjs              optional AI calls with scripted fallbacks
+    exam.mjs            quiz bank loading, exam selection, scoring, tailored plan
     java.mjs            JDK detection, compile, run, timeout, cleanup
     progress.mjs        local progress records
     scenarios.mjs       scenario loading and public projection

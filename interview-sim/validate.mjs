@@ -8,6 +8,14 @@ import {
   runSubmission,
 } from './lib/java.mjs';
 import { criterionThreshold, keywordCoverage } from './public/scoring.mjs';
+import {
+  DEFAULT_EXAM_COUNT,
+  gradeForPercentage,
+  loadQuizBank,
+  publicExamQuestion,
+  scoreExam,
+  selectExamQuestions,
+} from './lib/exam.mjs';
 
 const failures = [];
 const checks = [];
@@ -303,6 +311,185 @@ async function validateCodeChecks(scenario) {
   }
 }
 
+function seededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function validateExamChecks() {
+  const bank = loadQuizBank({ refresh: true });
+  record(
+    bank.topics.length === 8,
+    `exam bank loads through the server path: ${bank.topics.length} topics`,
+    `expected 8 topics`,
+  );
+  record(
+    bank.questions.length >= DEFAULT_EXAM_COUNT,
+    `exam bank has enough questions: ${bank.questions.length}`,
+    `expected at least ${DEFAULT_EXAM_COUNT}`,
+  );
+  record(
+    bank.questions.every((question) =>
+      typeof question.explanation === 'string' &&
+      question.explanation.trim().length > 0 &&
+      Number.isInteger(question.answer) &&
+      question.answer >= 0 &&
+      question.answer < question.options.length),
+    'exam bank questions carry a valid answer index and explanation',
+  );
+  record(
+    bank.topics.every((topic) => bank.questions.some((question) => question.topic === topic.id)),
+    'exam bank has at least one question per topic',
+  );
+
+  let selectionOk = true;
+  let selectionDetail = '';
+  for (let round = 0; round < 25 && selectionOk; round += 1) {
+    const selection = selectExamQuestions({ count: DEFAULT_EXAM_COUNT, rng: seededRandom(round + 1) });
+    const ids = selection.map((question) => question.id);
+    const counts = new Map(bank.topics.map((topic) => [topic.id, 0]));
+    for (const question of selection) counts.set(question.topic, (counts.get(question.topic) || 0) + 1);
+    const topicCounts = [...counts.values()];
+    const publicQuestions = selection.map(publicExamQuestion);
+    if (selection.length !== DEFAULT_EXAM_COUNT) {
+      selectionOk = false;
+      selectionDetail = `round ${round}: selected ${selection.length}`;
+    } else if (new Set(ids).size !== DEFAULT_EXAM_COUNT) {
+      selectionOk = false;
+      selectionDetail = `round ${round}: duplicate question ids`;
+    } else if (topicCounts.some((count) => count < 2 || count > 3)) {
+      selectionOk = false;
+      selectionDetail = `round ${round}: topic counts ${topicCounts.join(',')}`;
+    } else if (publicQuestions.some((question) => 'answer' in question || 'explanation' in question)) {
+      selectionOk = false;
+      selectionDetail = `round ${round}: answers or explanations leaked`;
+    }
+  }
+  record(selectionOk, 'exam selection is 20 unique, balanced, answer-free questions', selectionDetail);
+
+  const focusedIds = bank.questions.slice(0, 6).map((question) => question.id).reverse();
+  const focused = selectExamQuestions({ ids: focusedIds });
+  record(
+    Boolean(focused) &&
+      focused.length === focusedIds.length &&
+      focused.map((question) => question.id).sort().join('|') === focusedIds.slice().sort().join('|'),
+    'focused exam selection returns exactly the requested question ids',
+  );
+  record(
+    selectExamQuestions({ ids: ['missing-question-id'] }) === null,
+    'focused exam selection rejects an unknown question id',
+  );
+
+  const bands = [
+    [100, 'Strong hire signal'],
+    [85, 'Strong hire signal'],
+    [84, 'Solid, with gaps'],
+    [70, 'Solid, with gaps'],
+    [69, 'Developing'],
+    [50, 'Developing'],
+    [49, 'Needs another pass'],
+    [0, 'Needs another pass'],
+  ];
+  record(
+    bands.every(([percentage, label]) => gradeForPercentage(percentage) === label),
+    'exam grade bands match the simulator bands',
+    bands.map(([percentage, label]) => `${percentage}=${gradeForPercentage(percentage)} (want ${label})`).join(', '),
+  );
+
+  const selection = selectExamQuestions({ count: DEFAULT_EXAM_COUNT, rng: seededRandom(99) });
+  const ids = selection.map((question) => question.id);
+
+  const allCorrect = scoreExam(ids, selection.map((question) => ({ id: question.id, selected: question.answer })));
+  record(
+    allCorrect.correct === allCorrect.total &&
+      allCorrect.total === DEFAULT_EXAM_COUNT &&
+      allCorrect.percentage === 100 &&
+      allCorrect.grade === 'Strong hire signal' &&
+      allCorrect.missed.length === 0 &&
+      allCorrect.plan.length === 0 &&
+      allCorrect.topicBreakdown.every((topic) => topic.correct === topic.total && topic.percentage === 100),
+    'exam scoring handles the all-correct case',
+    JSON.stringify({ correct: allCorrect.correct, total: allCorrect.total, grade: allCorrect.grade }),
+  );
+
+  const allWrong = scoreExam(ids, selection.map((question) => ({
+    id: question.id,
+    selected: (question.answer + 1) % question.options.length,
+  })));
+  const expectedPlanOrder = allWrong.topicBreakdown
+    .filter((topic) => topic.missedIds.length > 0)
+    .sort((left, right) =>
+      (right.total - right.correct) - (left.total - left.correct) ||
+      left.percentage - right.percentage ||
+      bank.topics.findIndex((topic) => topic.id === left.id) - bank.topics.findIndex((topic) => topic.id === right.id),
+    )
+    .map((topic) => topic.id);
+  const missedByTopic = new Map();
+  for (const miss of allWrong.missed) {
+    const list = missedByTopic.get(miss.topic) || [];
+    list.push(miss.id);
+    missedByTopic.set(miss.topic, list);
+  }
+  const planQuestionsOk = allWrong.plan.every((item) =>
+    (item.missed || []).map((missed) => missed.id).sort().join('|') ===
+      (missedByTopic.get(item.id) || []).slice().sort().join('|'),
+  );
+  record(
+    allWrong.correct === 0 &&
+      allWrong.percentage === 0 &&
+      allWrong.grade === 'Needs another pass' &&
+      allWrong.missed.length === DEFAULT_EXAM_COUNT &&
+      allWrong.plan.length === bank.topics.length &&
+      allWrong.plan.map((item) => item.id).join('|') === expectedPlanOrder.join('|') &&
+      planQuestionsOk,
+    'exam scoring handles the all-wrong case and ranks the tailored plan',
+    JSON.stringify({
+      correct: allWrong.correct,
+      grade: allWrong.grade,
+      plan: allWrong.plan.map((item) => item.id),
+      expected: expectedPlanOrder,
+      planQuestionsOk,
+    }),
+  );
+
+  const partialAnswers = selection.map((question) => {
+    const topicIndex = bank.topics.findIndex((topic) => topic.id === question.topic);
+    const wrong = topicIndex % 3 === 0;
+    return {
+      id: question.id,
+      selected: wrong ? (question.answer + 1) % question.options.length : question.answer,
+    };
+  });
+  const partial = scoreExam(ids, partialAnswers);
+  const partialBreakdownOk = partial.topicBreakdown.every((topic) => {
+    const items = selection.filter((question) => question.topic === topic.id);
+    const correct = items.filter((question) => question.answer === partialAnswers.find((answer) => answer.id === question.id).selected).length;
+    return topic.total === items.length &&
+      topic.correct === correct &&
+      topic.missedIds.length === items.length - correct &&
+      topic.percentage === (items.length ? Math.round((correct / items.length) * 100) : 0);
+  });
+  record(
+    partialBreakdownOk &&
+      partial.plan.every((item) => item.missedCount === item.total - item.correct) &&
+      partial.plan.length > 0,
+    'exam scoring aggregates per topic and plans only missed topics',
+    JSON.stringify(partial.topicBreakdown.map((topic) => `${topic.id}:${topic.correct}/${topic.total}`)),
+  );
+
+  const missedIds = partial.missed.map((miss) => miss.id);
+  const retake = selectExamQuestions({ ids: missedIds });
+  record(
+    Boolean(retake) &&
+      retake.length === missedIds.length &&
+      retake.map((question) => question.id).sort().join('|') === missedIds.slice().sort().join('|'),
+    `focused retake contains exactly the ${missedIds.length} missed question ids`,
+  );
+}
+
 async function main() {
   const jdk = detectJdk({ refresh: true });
   if (!jdk.available) {
@@ -310,6 +497,8 @@ async function main() {
     process.exit(1);
   }
   process.stdout.write(`JDK: ${jdk.version} (${jdk.source}) at ${jdk.home || jdk.javac}\n`);
+
+  validateExamChecks();
 
   const publicSketch = 'public class ReviewEngine {\n  private int reviews;\n}\n';
   const sketchFallback = 'ClaimReviewDesign.java';

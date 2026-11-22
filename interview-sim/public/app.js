@@ -66,6 +66,246 @@ const state = {
   sessionId: null,
 };
 
+const exam = {
+  active: false,
+  questions: [],
+  topics: [],
+  answers: new Map(),
+  index: 0,
+  minutes: 25,
+  durationSeconds: 25 * 60,
+  remaining: 25 * 60,
+  elapsed: 0,
+  running: false,
+  manualPause: false,
+  pausedByVisibility: false,
+  lastTick: 0,
+  ticker: null,
+  submitted: false,
+  submitting: false,
+  focused: false,
+  sessionId: null,
+  report: null,
+  record: null,
+  timedOut: false,
+  summaryText: '',
+};
+
+const AUTO_SPEAK_KEY = 'interview-sim.auto-speak';
+const voice = {
+  autoSpeak: false,
+  recognition: null,
+  recognitionConstructor: typeof window !== 'undefined'
+    ? (window.SpeechRecognition || window.webkitSpeechRecognition || null)
+    : null,
+  listening: false,
+  dictationBase: '',
+};
+
+function speechSupported() {
+  return typeof window !== 'undefined' &&
+    Boolean(window.speechSynthesis) &&
+    typeof window.SpeechSynthesisUtterance === 'function';
+}
+
+function readStoredAutoSpeak() {
+  try {
+    return window.localStorage.getItem(AUTO_SPEAK_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function storeAutoSpeak(enabled) {
+  try {
+    window.localStorage.setItem(AUTO_SPEAK_KEY, enabled ? '1' : '0');
+  } catch {}
+}
+
+function localVoice() {
+  if (!speechSupported()) return null;
+  const voices = window.speechSynthesis.getVoices?.() || [];
+  const local = voices.filter((item) => item.localService);
+  return local.find((item) => /^en/i.test(item.lang)) || local[0] ||
+    voices.find((item) => /^en/i.test(item.lang)) || voices[0] || null;
+}
+
+function cancelSpeech() {
+  if (!speechSupported()) return;
+  try {
+    window.speechSynthesis.cancel();
+  } catch {}
+}
+
+function speakText(text) {
+  const content = String(text || '').trim();
+  if (!content || !speechSupported()) return false;
+  try {
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    const utterance = new window.SpeechSynthesisUtterance(content);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    const selected = localVoice();
+    if (selected) utterance.voice = selected;
+    synth.speak(utterance);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function speakIfAuto(text) {
+  if (voice.autoSpeak) speakText(text);
+}
+
+function setVoiceNote(text) {
+  const note = $('voiceStatus');
+  if (note) note.textContent = text;
+}
+
+function updateVoiceUI() {
+  const button = $('autoSpeakBtn');
+  if (button) {
+    const supported = speechSupported();
+    button.disabled = !supported;
+    button.setAttribute('aria-pressed', voice.autoSpeak ? 'true' : 'false');
+    button.textContent = supported ? `Auto-speak: ${voice.autoSpeak ? 'on' : 'off'}` : 'Auto-speak unavailable';
+    button.title = supported
+      ? 'Speak each new interviewer message aloud'
+      : 'Speech synthesis is not supported in this browser';
+  }
+  const briefButton = $('briefSpeakBtn');
+  if (briefButton) {
+    briefButton.disabled = !speechSupported();
+    briefButton.title = speechSupported() ? 'Play the interviewer opening aloud' : 'Speech synthesis is not supported in this browser';
+  }
+}
+
+function setAutoSpeak(enabled) {
+  if (enabled && !speechSupported()) {
+    voice.autoSpeak = false;
+    updateVoiceUI();
+    showToast('Speech synthesis is not supported in this browser, so interviewer messages stay text-only.');
+    return;
+  }
+  voice.autoSpeak = Boolean(enabled);
+  if (!voice.autoSpeak) cancelSpeech();
+  storeAutoSpeak(voice.autoSpeak);
+  updateVoiceUI();
+}
+
+function setDictationStatus(text) {
+  const status = $('dictationStatus');
+  if (status) status.textContent = text;
+}
+
+function updateMicUI(extraDisabled = false) {
+  const button = $('micBtn');
+  if (!button) return;
+  const supported = Boolean(voice.recognitionConstructor);
+  button.disabled = !supported || extraDisabled;
+  button.setAttribute('aria-pressed', voice.listening ? 'true' : 'false');
+  button.textContent = voice.listening ? 'Stop' : 'Mic';
+  button.setAttribute('aria-label', voice.listening ? 'Stop dictation' : 'Start dictation');
+  button.title = supported ? 'Dictate your question instead of typing' : 'Speech recognition is not supported in this browser';
+}
+
+function appendTranscript(base, addition) {
+  const clean = String(addition || '').trim();
+  if (!clean) return base;
+  const separator = base && !/\s$/.test(base) ? ' ' : '';
+  return `${base}${separator}${clean}`;
+}
+
+function setupRecognition() {
+  if (!voice.recognitionConstructor) return null;
+  if (voice.recognition) return voice.recognition;
+  const recognition = new voice.recognitionConstructor();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+  recognition.onstart = () => {
+    voice.listening = true;
+    updateMicUI();
+    setDictationStatus('Listening. Speak your question, then stop the microphone or press Ask when ready.');
+  };
+  recognition.onresult = (event) => {
+    let interim = '';
+    let final = '';
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const transcript = event.results[index][0].transcript;
+      if (event.results[index].isFinal) final += transcript;
+      else interim += transcript;
+    }
+    if (final) {
+      voice.dictationBase = appendTranscript(voice.dictationBase, final);
+      const input = $('clarifyInput');
+      if (input) input.value = voice.dictationBase;
+    }
+    const shown = interim.trim();
+    setDictationStatus(shown
+      ? `Listening: ${shown}`
+      : (final ? 'Dictation added. Review the text before asking.' : 'Listening...'));
+  };
+  recognition.onerror = (event) => {
+    const messages = {
+      'not-allowed': 'Microphone permission was denied. Allow microphone access or type your question instead.',
+      'service-not-allowed': 'Speech recognition is not allowed in this browser context. Type your question instead.',
+      'audio-capture': 'No microphone was found. Type your question instead.',
+      'no-speech': 'No speech was heard. Try again when you are ready.',
+      network: 'Speech recognition needs a network connection in this browser. Type your question instead.',
+    };
+    setDictationStatus(messages[event.error] || `Dictation stopped: ${event.error}. Type your question instead.`);
+    voice.listening = false;
+    updateMicUI();
+  };
+  recognition.onend = () => {
+    const wasListening = voice.listening;
+    voice.listening = false;
+    updateMicUI();
+    if (wasListening) setDictationStatus('Dictation stopped. Review the text, then press Ask when ready.');
+  };
+  voice.recognition = recognition;
+  return recognition;
+}
+
+function stopDictation(silent = false) {
+  if (voice.listening && voice.recognition) {
+    voice.listening = false;
+    try {
+      voice.recognition.stop();
+    } catch {}
+    updateMicUI();
+    if (!silent) setDictationStatus('Dictation stopped. Review the text, then press Ask when ready.');
+  }
+}
+
+function toggleDictation() {
+  if (!voice.recognitionConstructor) {
+    setDictationStatus('Speech recognition is not supported in this browser. Type your question instead.');
+    return;
+  }
+  const input = $('clarifyInput');
+  if (!input || input.disabled) {
+    setDictationStatus('Dictation is unavailable while the question field is locked.');
+    return;
+  }
+  if (voice.listening) {
+    stopDictation();
+    return;
+  }
+  const recognition = setupRecognition();
+  if (!recognition) return;
+  voice.dictationBase = input.value;
+  try {
+    recognition.start();
+  } catch {
+    setDictationStatus('Dictation could not start. Type your question instead.');
+  }
+}
+
+
 const $ = (id) => document.getElementById(id);
 
 function newSessionId() {
@@ -335,6 +575,11 @@ function openBriefing(scenario) {
   $('briefTitle').textContent = scenario.title;
   $('briefTagline').textContent = scenario.tagline;
   $('briefIntro').textContent = scenario.intro;
+  const briefSpeak = $('briefSpeakBtn');
+  if (briefSpeak) {
+    briefSpeak.disabled = !speechSupported();
+    briefSpeak.title = speechSupported() ? 'Play the interviewer opening aloud' : 'Speech synthesis is not supported in this browser';
+  }
 
   const extras = [];
   if (scenario.reproductionNote) {
@@ -462,7 +707,10 @@ function startSession(scenario, minutes) {
   $('consoleStatus').textContent = 'Not run yet';
   $('clarifyInput').value = '';
   $('clarifyInput').disabled = false;
-  $('clarifyForm').querySelector('button').disabled = false;
+  $('clarifyForm').querySelector('button[type="submit"]').disabled = false;
+  stopDictation(true);
+  setDictationStatus('');
+  updateMicUI();
   $('restoreCodeBtn').classList.add('hidden');
   $('loadChangeBtn').classList.add('hidden');
 
@@ -563,7 +811,8 @@ function renderPhaseUI() {
   $('hintBtn').disabled = closed || state.hints.length >= (state.scenario?.hints?.length || 3);
   $('probeBtn').disabled = closed || state.probeBusy;
   $('clarifyInput').disabled = closed;
-  $('clarifyForm').querySelector('button').disabled = closed;
+  $('clarifyForm').querySelector('button[type="submit"]').disabled = closed;
+  updateMicUI(closed || state.clarifyBusy);
   $('resetPhaseBtn').disabled = closed;
   $('diagnosisCard').classList.toggle('hidden', state.scenario?.roundType !== 'debugging' || closed);
   $('diagnosisInput').disabled = closed;
@@ -579,18 +828,37 @@ function addMessage(role, text, options = {}) {
   const message = document.createElement('div');
   message.className = `message ${role}`;
   if (options.tone) message.classList.add(options.tone);
+  if (options.typing) message.classList.add('typing');
+
+  const head = document.createElement('div');
+  head.className = 'message-head';
   if (options.meta) {
     const meta = document.createElement('span');
     meta.className = 'meta';
     meta.textContent = options.meta;
     if (options.source === 'ai') meta.classList.add('ai-source');
-    message.appendChild(meta);
+    head.appendChild(meta);
   }
+  const speakable = role === 'interviewer' && Boolean(text) && !options.typing;
+  if (speakable) {
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.className = 'message-speak';
+    play.textContent = 'Play';
+    play.setAttribute('aria-label', 'Play this interviewer message aloud');
+    play.disabled = !speechSupported();
+    if (!speechSupported()) play.title = 'Speech synthesis is not supported in this browser';
+    play.addEventListener('click', () => speakText(text));
+    head.appendChild(play);
+  }
+  if (head.childElementCount) message.appendChild(head);
+
   const body = document.createElement('span');
   body.textContent = text;
   message.appendChild(body);
   log.appendChild(message);
   log.scrollTop = log.scrollHeight;
+  if (speakable) speakIfAuto(text);
   return message;
 }
 
@@ -679,17 +947,18 @@ async function submitClarify(event) {
   const input = $('clarifyInput');
   const question = input.value.trim();
   if (!question || state.clarifyBusy || currentPhase() === 'debrief') return;
+  stopDictation(true);
 
   const token = state.sessionToken;
   state.clarifyBusy = true;
   input.disabled = true;
-  $('clarifyForm').querySelector('button').disabled = true;
+  $('clarifyForm').querySelector('button[type="submit"]').disabled = true;
+  updateMicUI(true);
   addMessage('candidate', question, { meta: 'You' });
   state.clarify.asked += 1;
   updateClarifyCounter();
   input.value = '';
-  const typing = addMessage('interviewer', 'Thinking...', { meta: 'Interviewer' });
-  typing.classList.add('typing');
+  const typing = addMessage('interviewer', 'Thinking...', { meta: 'Interviewer', typing: true });
 
   try {
     const answer = await api('/api/ai/ask', {
@@ -717,9 +986,10 @@ async function submitClarify(event) {
       state.clarifyBusy = false;
       if (currentPhase() !== 'debrief') {
         input.disabled = false;
-        $('clarifyForm').querySelector('button').disabled = false;
+        $('clarifyForm').querySelector('button[type="submit"]').disabled = false;
         input.focus();
       }
+      updateMicUI(currentPhase() === 'debrief');
     }
   }
 }
@@ -1357,6 +1627,15 @@ function uniqueRecords(records) {
 function topicStats(records) {
   const map = new Map();
   for (const record of uniqueRecords(records)) {
+    if (record.kind === 'exam' && Array.isArray(record.topicBreakdown)) {
+      for (const topic of record.topicBreakdown) {
+        const entry = map.get(topic.name) || { topic: topic.name, sessions: 0, total: 0 };
+        entry.sessions += 1;
+        entry.total += Number(topic.percentage) || 0;
+        map.set(topic.name, entry);
+      }
+      continue;
+    }
     for (const topic of record.topics || []) {
       const entry = map.get(topic) || { topic, sessions: 0, total: 0 };
       entry.sessions += 1;
@@ -1416,6 +1695,359 @@ function exitSession() {
   $('debriefDialog').close();
 }
 
+function clampExamMinutes(value, fallback = 25) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes)) return fallback;
+  return Math.max(1, Math.min(180, Math.round(minutes)));
+}
+
+function examTopicName(topicId) {
+  return exam.topics.find((topic) => topic.id === topicId)?.name || topicId;
+}
+
+function startExamTicker() {
+  stopExamTicker();
+  exam.ticker = setInterval(tickExam, 250);
+}
+
+function stopExamTicker() {
+  if (exam.ticker) clearInterval(exam.ticker);
+  exam.ticker = null;
+}
+
+function renderExamTimer() {
+  const value = $('examTimerValue');
+  if (!value) return;
+  value.textContent = clock(exam.remaining, false);
+  value.classList.toggle('low', exam.remaining <= 60);
+}
+
+function renderExamProgress() {
+  const total = exam.questions.length;
+  const answered = exam.answers.size;
+  $('examProgressLabel').textContent = total
+    ? `Question ${exam.index + 1} of ${total} · ${answered} answered`
+    : 'No questions';
+  const fill = $('examProgressBar');
+  if (fill) fill.style.width = total ? `${((exam.index + 1) / total) * 100}%` : '0%';
+}
+
+function renderExamNav() {
+  const last = exam.questions.length - 1;
+  $('examPrevBtn').disabled = exam.index <= 0;
+  $('examNextBtn').disabled = exam.index >= last;
+  $('examPauseBtn').textContent = exam.running ? 'Pause' : 'Resume';
+  $('examPauseBtn').disabled = exam.submitted;
+  $('examSubmitBtn').disabled = exam.submitted || exam.submitting;
+  $('examSubmitBtn').textContent = exam.submitting ? 'Submitting...' : 'Submit exam';
+}
+
+function renderExamQuestion() {
+  const question = exam.questions[exam.index];
+  if (!question) return;
+  $('examLegend').textContent = `Question ${exam.index + 1}. ${question.prompt}`;
+  const holder = $('examOptions');
+  holder.innerHTML = '';
+  question.options.forEach((text, index) => {
+    const label = document.createElement('label');
+    label.className = 'exam-option';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'exam-option';
+    input.value = String(index);
+    input.checked = exam.answers.get(question.id) === index;
+    input.addEventListener('change', () => {
+      exam.answers.set(question.id, index);
+      $('examQuestionMeta').textContent = examQuestionMeta(question);
+      renderExamProgress();
+    });
+    const span = document.createElement('span');
+    span.textContent = text;
+    label.append(input, span);
+    holder.appendChild(label);
+  });
+  $('examQuestionMeta').textContent = examQuestionMeta(question);
+  renderExamProgress();
+  renderExamNav();
+}
+
+function examQuestionMeta(question) {
+  const kind = question.type === 'true-false' ? 'True / false' : 'Multiple choice';
+  const answered = exam.answers.has(question.id) ? 'Answer saved' : 'Not answered yet';
+  return `${examTopicName(question.topic)} · ${kind} · ${answered}`;
+}
+
+function goToExamQuestion(index) {
+  if (!exam.active || exam.submitted) return;
+  exam.index = Math.max(0, Math.min(exam.questions.length - 1, index));
+  renderExamQuestion();
+}
+
+function toggleExamPause() {
+  if (!exam.active || exam.submitted) return;
+  if (exam.running) {
+    exam.running = false;
+    exam.manualPause = true;
+    exam.pausedByVisibility = false;
+    $('examTimerNote').textContent = 'Timer paused.';
+  } else {
+    exam.running = true;
+    exam.manualPause = false;
+    exam.pausedByVisibility = false;
+    exam.lastTick = performance.now();
+    $('examTimerNote').textContent = 'Timer resumed.';
+  }
+  renderExamNav();
+}
+
+function tickExam() {
+  if (!exam.active || !exam.running || exam.submitted) return;
+  const now = performance.now();
+  const delta = Math.max(0, (now - exam.lastTick) / 1000);
+  exam.lastTick = now;
+  exam.elapsed += delta;
+  exam.remaining = Math.max(0, exam.remaining - delta);
+  renderExamTimer();
+  if (exam.remaining <= 0) {
+    exam.running = false;
+    $('examTimerNote').textContent = 'Time is up. Your exam was submitted automatically.';
+    submitExam({ timedOut: true });
+  }
+}
+
+async function startExam({ ids = null, minutes = 25 } = {}) {
+  if (exam.submitting) return;
+  if (exam.active && !exam.submitted && !window.confirm('Replace the exam in progress? Your answers will not be saved.')) return;
+  const query = ids && ids.length ? `?ids=${ids.map((id) => encodeURIComponent(id)).join(',')}` : '';
+  let data;
+  try {
+    data = await api(`/api/exam${query}`);
+  } catch (error) {
+    showToast(error.message);
+    return;
+  }
+  if (!data.questions?.length) {
+    showToast('No exam questions were available.');
+    return;
+  }
+
+  stopExamTicker();
+  stopDictation(true);
+  exam.active = true;
+  exam.questions = data.questions;
+  exam.topics = data.topics || [];
+  exam.answers = new Map();
+  exam.index = 0;
+  exam.minutes = clampExamMinutes(minutes, data.defaultMinutes || 25);
+  exam.durationSeconds = exam.minutes * 60;
+  exam.remaining = exam.durationSeconds;
+  exam.elapsed = 0;
+  exam.running = true;
+  exam.manualPause = false;
+  exam.pausedByVisibility = false;
+  exam.lastTick = performance.now();
+  exam.submitted = false;
+  exam.submitting = false;
+  exam.focused = Boolean(ids && ids.length);
+  exam.sessionId = newSessionId();
+  exam.report = null;
+  exam.record = null;
+  exam.timedOut = false;
+  exam.summaryText = '';
+
+  $('examTitle').textContent = exam.focused
+    ? `Focused retake: ${data.count} question${data.count === 1 ? '' : 's'}`
+    : `${data.count}-question exam`;
+  $('examStatusLine').textContent = exam.focused
+    ? 'Only the questions you missed last time. Answer each one, then submit.'
+    : 'Answer every question, then submit. Answers stay hidden until the report.';
+  $('examTimerNote').textContent = '';
+  $('setupScreen').classList.add('hidden');
+  $('sessionScreen').classList.add('hidden');
+  $('examScreen').classList.remove('hidden');
+  $('exitBtn').classList.add('hidden');
+  $('examReportDialog').close();
+  $('historyDialog').close();
+  $('briefingDialog').close();
+
+  renderExamQuestion();
+  renderExamTimer();
+  startExamTicker();
+}
+
+async function submitExam({ timedOut = false } = {}) {
+  if (!exam.active || exam.submitted || exam.submitting) return;
+  exam.submitting = true;
+  exam.submitted = true;
+  exam.running = false;
+  exam.timedOut = Boolean(timedOut);
+  stopExamTicker();
+  renderExamNav();
+
+  const questionIds = exam.questions.map((question) => question.id);
+  const answers = [...exam.answers.entries()].map(([id, selected]) => ({ id, selected }));
+  try {
+    const report = await api('/api/exam/score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionIds, answers }),
+    });
+    exam.report = report;
+    const record = {
+      kind: 'exam',
+      scenarioId: 'exam',
+      sessionId: exam.sessionId,
+      title: exam.focused ? `Focused retake (${report.total} questions)` : `Exam (${report.total} questions)`,
+      examMode: exam.focused ? 'focused' : 'standard',
+      score: report.percentage,
+      percentage: report.percentage,
+      correct: report.correct,
+      total: report.total,
+      grade: report.grade,
+      topics: report.topicBreakdown.map((topic) => topic.name),
+      topicBreakdown: report.topicBreakdown,
+      missedQuestionIds: report.missed.map((item) => item.id),
+      plan: report.plan,
+      questionIds,
+      durationSeconds: exam.durationSeconds,
+      elapsedSeconds: Math.round(exam.elapsed),
+      timedOut: exam.timedOut,
+      mode: 'scripted',
+    };
+    exam.record = record;
+    try {
+      const saved = await api('/api/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ record }),
+      });
+      state.progress.unshift(saved.record);
+    } catch (error) {
+      showToast(`Could not save exam progress: ${error.message}`);
+    }
+    renderExamReport(report, { timedOut: exam.timedOut });
+    $('examResultAnnouncement').textContent = '';
+    $('examReportDialog').showModal();
+    $('examResultAnnouncement').textContent = exam.summaryText;
+  } catch (error) {
+    exam.submitted = false;
+    $('examTimerNote').textContent = `Submission failed: ${error.message}. You can try submitting again.`;
+    showToast(error.message);
+  } finally {
+    exam.submitting = false;
+    renderExamNav();
+  }
+}
+
+function examSummaryText(report, { timedOut = false } = {}) {
+  const areas = report.topicBreakdown
+    .filter((topic) => topic.correct < topic.total)
+    .map((topic) => topic.name);
+  const lead = timedOut ? 'Time expired, so the exam was submitted automatically. ' : '';
+  const areaText = areas.length ? `Areas to work on: ${areas.join(', ')}.` : 'No areas were done incorrectly.';
+  const first = report.plan?.[0];
+  const focus = first ? `The tailored plan starts with ${first.name}, where ${first.missedCount} question${first.missedCount === 1 ? ' was' : 's were'} missed.` : '';
+  return `${lead}You scored ${report.correct} out of ${report.total}, ${report.percentage} percent. Grade: ${report.grade}. ${areaText} ${focus}`
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function renderExamReport(report, { timedOut = false } = {}) {
+  const areas = report.topicBreakdown.filter((topic) => topic.correct < topic.total);
+  const areasHtml = areas.length
+    ? `<ul class="exam-areas">${areas.map((topic) => `<li>${escapeHtml(topic.name)}: ${topic.total - topic.correct} incorrect of ${topic.total} (${topic.percentage}%)</li>`).join('')}</ul>`
+    : '<p class="muted">No topic was done incorrectly.</p>';
+
+  const topicRows = report.topicBreakdown.map((topic) => `
+    <tr>
+      <td>${escapeHtml(topic.name)}</td>
+      <td class="numeric">${topic.correct}/${topic.total}</td>
+      <td class="numeric">${topic.percentage}%</td>
+    </tr>`).join('');
+
+  const planHtml = report.plan.length
+    ? `<ol class="exam-plan">${report.plan.map((item) => `
+      <li>
+        <div class="exam-plan-head">
+          <strong>${escapeHtml(item.name)}</strong>
+          <span>${item.missedCount} missed · ${item.accuracy}% correct</span>
+        </div>
+        <ul>${item.missed.map((missed) => `<li>${escapeHtml(missed.prompt)}</li>`).join('')}</ul>
+      </li>`).join('')}</ol>`
+    : '<p class="muted">No missed questions, so no remediation plan is needed.</p>';
+
+  const missedHtml = report.missed.length
+    ? `<div class="exam-miss-list">${report.missed.map((item) => `
+      <article class="exam-miss">
+        <h4>${escapeHtml(item.prompt)}</h4>
+        <div class="exam-miss-rows">
+          <div class="exam-miss-row"><span>Topic</span><span>${escapeHtml(item.topicName)}</span></div>
+          <div class="exam-miss-row"><span>Your answer</span><span class="wrong">${item.selectedAnswer === null ? 'No answer' : escapeHtml(item.selectedAnswer)}</span></div>
+          <div class="exam-miss-row"><span>Correct answer</span><span class="right">${escapeHtml(item.correctAnswer)}</span></div>
+        </div>
+        <p>${escapeHtml(item.explanation)}</p>
+      </article>`).join('')}</div>`
+    : '<p class="muted">Every question was correct.</p>';
+
+  const summary = examSummaryText(report, { timedOut });
+  exam.summaryText = summary;
+  $('examResultAnnouncement').textContent = summary;
+  $('examReportTitle').textContent = exam.focused ? 'Focused retake result' : 'Exam result';
+  $('examReportBody').innerHTML = `
+    <div class="score-banner">
+      <div class="score-value">${report.percentage}<small>%</small></div>
+      <div>
+        <h3>${escapeHtml(report.grade)}</h3>
+        <p>${escapeHtml(summary)}</p>
+      </div>
+    </div>
+    <div class="debrief-grid">
+      <div class="debrief-card">
+        <h3>Areas done incorrectly</h3>
+        ${areasHtml}
+      </div>
+      <div class="debrief-card">
+        <h3>Per-topic breakdown</h3>
+        <table class="exam-topic-table">
+          <thead><tr><th>Topic</th><th>Correct</th><th>Score</th></tr></thead>
+          <tbody>${topicRows}</tbody>
+        </table>
+        <p class="muted" style="margin-top:8px">${report.correct} of ${report.total} correct overall.</p>
+      </div>
+    </div>
+    <div class="debrief-card">
+      <h3>Tailored remediation plan</h3>
+      ${planHtml}
+    </div>
+    <div class="debrief-card">
+      <h3>Every incorrect answer</h3>
+      ${missedHtml}
+    </div>
+  `;
+  $('examRetakeMissedBtn').disabled = report.missed.length === 0;
+  const speakButton = $('examSpeakBtn');
+  speakButton.disabled = !speechSupported();
+  speakButton.textContent = speechSupported() ? 'Play feedback summary' : 'Speech unavailable';
+  speakButton.title = speechSupported() ? 'Read the exam feedback summary aloud' : 'Speech synthesis is not supported in this browser';
+  speakIfAuto(summary);
+}
+
+function exitExam() {
+  if (!exam.active) return;
+  if (!exam.submitted && !window.confirm('Leave the exam? Your answers will not be saved.')) return;
+  stopExamTicker();
+  stopDictation(true);
+  exam.active = false;
+  exam.running = false;
+  exam.submitted = false;
+  exam.submitting = false;
+  $('examReportDialog').close();
+  $('examScreen').classList.add('hidden');
+  $('setupScreen').classList.remove('hidden');
+  $('exitBtn').classList.add('hidden');
+  setDictationStatus('');
+}
+
 async function openHistory() {
   const body = $('historyBody');
   body.innerHTML = '<p class="muted">Loading local progress...</p>';
@@ -1433,14 +2065,18 @@ function renderHistory(records) {
   const body = $('historyBody');
   const unique = uniqueRecords(records);
   if (!unique.length) {
-    body.innerHTML = '<div class="empty-state">No completed sessions yet. Finish a debrief and the record will appear here.</div>';
+    body.innerHTML = '<div class="empty-state">No completed sessions or exams yet. Finish a debrief or submit an exam and the record will appear here.</div>';
     return;
   }
-  const average = Math.round(unique.reduce((sum, record) => sum + (Number(record.score) || 0), 0) / unique.length);
+  const exams = unique.filter((record) => record.kind === 'exam');
+  const sessions = unique.filter((record) => record.kind !== 'exam');
+  const average = sessions.length
+    ? Math.round(sessions.reduce((sum, record) => sum + (Number(record.score) || 0), 0) / sessions.length)
+    : 0;
   const stats = topicStats(unique);
   const weakest = stats.slice(0, 4);
 
-  const rows = unique.map((record) => {
+  const rows = sessions.map((record) => {
     const when = record.savedAt ? new Date(record.savedAt).toLocaleString() : 'unknown';
     const tests = record.tests || {};
     const base = tests.base ? `${tests.base.passed}/${tests.base.total}` : '-';
@@ -1460,27 +2096,84 @@ function renderHistory(records) {
     </tr>`;
   }).join('');
 
+  const examRows = exams.map((record) => {
+    const when = record.savedAt ? new Date(record.savedAt).toLocaleString() : 'unknown';
+    const areas = (record.plan || []).map((item) => item.name).join(', ') || 'none';
+    return `<tr>
+      <td>${escapeHtml(when)}</td>
+      <td>${escapeHtml(record.examMode === 'focused' ? 'Focused retake' : 'Exam')}</td>
+      <td>${Number(record.correct) || 0}/${Number(record.total) || 0}</td>
+      <td class="score-cell">${Number(record.percentage ?? record.score) || 0}%</td>
+      <td>${escapeHtml(record.grade || '')}</td>
+      <td class="topics-cell">${escapeHtml(areas)}</td>
+    </tr>`;
+  }).join('');
+
+  const latestExam = exams[0];
+  const latestPlan = latestExam?.plan?.length
+    ? `<div class="debrief-card">
+        <h3>Latest tailored plan · ${escapeHtml(latestExam.title || 'Exam')}</h3>
+        <ol class="exam-plan">
+          ${latestExam.plan.map((item) => `
+            <li>
+              <div class="exam-plan-head">
+                <strong>${escapeHtml(item.name)}</strong>
+                <span>${item.missedCount} missed · ${item.accuracy}% correct</span>
+              </div>
+              <ul>${(item.missed || []).map((missed) => `<li>${escapeHtml(missed.prompt)}</li>`).join('')}</ul>
+            </li>`).join('')}
+        </ol>
+        <div class="debrief-actions">
+          <button id="startPlanRetakeBtn" type="button" class="primary">Start focused retake</button>
+        </div>
+      </div>`
+    : (latestExam ? `<div class="debrief-card">
+        <h3>Latest tailored plan</h3>
+        <p class="muted">The latest exam had no missed questions, so no focused retake is needed.</p>
+      </div>` : '');
+
   body.innerHTML = `
     <div class="history-summary">
-      <div class="history-stat"><span>Sessions</span><strong>${unique.length}</strong></div>
-      <div class="history-stat"><span>Average score</span><strong>${average}</strong></div>
+      <div class="history-stat"><span>Sessions</span><strong>${sessions.length}</strong></div>
+      <div class="history-stat"><span>Exams</span><strong>${exams.length}</strong></div>
+      <div class="history-stat"><span>Average session score</span><strong>${average}</strong></div>
       <div class="history-stat"><span>Weakest topic</span><strong>${escapeHtml(weakest[0]?.topic || 'none yet')}</strong></div>
-      <div class="history-stat"><span>Topics practised</span><strong>${stats.length}</strong></div>
     </div>
     <div class="debrief-card">
       <h3>Weakest topics</h3>
       <div class="weak-topics">
-        ${weakest.map((entry) => `<span>${escapeHtml(entry.topic)} · ${Math.round(entry.average)} avg · ${entry.sessions} session${entry.sessions === 1 ? '' : 's'}</span>`).join('') || '<span>No topic data yet</span>'}
+        ${weakest.map((entry) => `<span>${escapeHtml(entry.topic)} · ${Math.round(entry.average)} avg · ${entry.sessions} record${entry.sessions === 1 ? '' : 's'}</span>`).join('') || '<span>No topic data yet</span>'}
       </div>
     </div>
-    <div class="debrief-card">
+    ${exams.length ? `<div class="debrief-card">
+      <h3>Exam attempts</h3>
+      <table class="history-table">
+        <thead><tr><th>When</th><th>Type</th><th>Correct</th><th>Score</th><th>Grade</th><th>Areas done incorrectly</th></tr></thead>
+        <tbody>${examRows}</tbody>
+      </table>
+    </div>` : ''}
+    ${latestPlan}
+    ${sessions.length ? `<div class="debrief-card">
       <h3>Completed sessions</h3>
       <table class="history-table">
         <thead><tr><th>When</th><th>Type</th><th>Scenario</th><th>Topics</th><th>Score</th><th>Tests / sketch</th><th>Hints</th><th>Mode</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>
+    </div>` : ''}
   `;
+
+  const retake = $('startPlanRetakeBtn');
+  if (retake && latestExam) {
+    const ids = latestExam.missedQuestionIds || [];
+    const minutes = latestExam.durationSeconds
+      ? Math.round(latestExam.durationSeconds / 60)
+      : 25;
+    retake.disabled = ids.length === 0;
+    retake.addEventListener('click', () => {
+      $('historyDialog').close();
+      startExam({ ids, minutes });
+    });
+  }
 }
 
 function bindEvents() {
@@ -1503,6 +2196,30 @@ function bindEvents() {
   $('resetPhaseBtn').addEventListener('click', resetPhase);
   $('nextPhaseBtn').addEventListener('click', advancePhase);
   $('clarifyForm').addEventListener('submit', submitClarify);
+  $('micBtn').addEventListener('click', toggleDictation);
+  $('autoSpeakBtn').addEventListener('click', () => setAutoSpeak(!voice.autoSpeak));
+  $('briefSpeakBtn').addEventListener('click', () => {
+    if (state.pendingScenario) speakText(state.pendingScenario.intro);
+  });
+  $('startExamBtn').addEventListener('click', () => {
+    const minutes = clampExamMinutes($('examMinutes').value, 25);
+    startExam({ minutes });
+  });
+  $('examPrevBtn').addEventListener('click', () => goToExamQuestion(exam.index - 1));
+  $('examNextBtn').addEventListener('click', () => goToExamQuestion(exam.index + 1));
+  $('examPauseBtn').addEventListener('click', toggleExamPause);
+  $('examSubmitBtn').addEventListener('click', () => submitExam());
+  $('examExitBtn').addEventListener('click', exitExam);
+  $('closeExamReportBtn').addEventListener('click', exitExam);
+  $('examBackToSetupBtn').addEventListener('click', exitExam);
+  $('examSpeakBtn').addEventListener('click', () => {
+    if (exam.summaryText) speakText(exam.summaryText);
+  });
+  $('examRetakeMissedBtn').addEventListener('click', () => {
+    const ids = (exam.report?.missed || []).map((item) => item.id);
+    if (!ids.length) return;
+    startExam({ ids, minutes: exam.minutes });
+  });
   $('hintBtn').addEventListener('click', requestHint);
   $('probeBtn').addEventListener('click', requestProbe);
   $('runBtn').addEventListener('click', runTests);
@@ -1528,16 +2245,47 @@ function bindEvents() {
     }
   });
 
-  for (const id of ['briefingDialog', 'debriefDialog', 'historyDialog']) {
+  for (const id of ['briefingDialog', 'debriefDialog', 'historyDialog', 'examReportDialog']) {
     const dialog = $(id);
     dialog.addEventListener('click', (event) => {
-      if (event.target === dialog) dialog.close();
+      if (event.target !== dialog) return;
+      if (id === 'examReportDialog') exitExam();
+      else dialog.close();
     });
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!exam.active || exam.submitted) return;
+    if (document.hidden) {
+      if (exam.running) {
+        exam.running = false;
+        exam.pausedByVisibility = true;
+        exam.lastTick = performance.now();
+        $('examTimerNote').textContent = 'Timer paused while this tab is hidden.';
+        renderExamNav();
+      }
+    } else if (exam.pausedByVisibility && !exam.manualPause) {
+      exam.running = true;
+      exam.pausedByVisibility = false;
+      exam.lastTick = performance.now();
+      $('examTimerNote').textContent = 'Timer resumed.';
+      renderExamNav();
+    }
+  });
 }
 
 async function init() {
   bindEvents();
+  voice.autoSpeak = readStoredAutoSpeak();
+  updateVoiceUI();
+  updateMicUI();
+  if (!speechSupported() && !voice.recognitionConstructor) {
+    setVoiceNote('Voice features are not supported in this browser; the simulator stays text-only.');
+  } else if (!speechSupported()) {
+    setVoiceNote('Speech synthesis is not supported in this browser; interviewer messages are text-only.');
+  } else if (!voice.recognitionConstructor) {
+    setVoiceNote('Speech recognition is not supported in this browser; type your questions instead.');
+  }
   try {
     const health = await api('/api/health');
     state.jdk = health.jdk;

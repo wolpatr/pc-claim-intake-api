@@ -454,6 +454,30 @@ function validateExamChecks() {
     }),
   );
 
+  const tieFixture = {
+    git: bank.questions.filter((question) => question.topic === 'git').slice(0, 2),
+    project: bank.questions.filter((question) => question.topic === 'project').slice(0, 4),
+  };
+  const tieAnswers = [
+    ...tieFixture.git.map((question) => ({
+      id: question.id,
+      selected: (question.answer + 1) % question.options.length,
+    })),
+    ...tieFixture.project.map((question, index) => ({
+      id: question.id,
+      selected: index < 2 ? (question.answer + 1) % question.options.length : question.answer,
+    })),
+  ];
+  const tied = scoreExam(
+    [...tieFixture.git, ...tieFixture.project].map((question) => question.id),
+    tieAnswers,
+  );
+  record(
+    tied.plan.map((item) => item.id).join('|') === 'git|project',
+    'exam plan breaks equal missed counts by the lower accuracy',
+    JSON.stringify(tied.plan.map((item) => `${item.id}: ${item.missedCount} missed, ${item.accuracy}% correct`)),
+  );
+
   const partialAnswers = selection.map((question) => {
     const topicIndex = bank.topics.findIndex((topic) => topic.id === question.topic);
     const wrong = topicIndex % 3 === 0;

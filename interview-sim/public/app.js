@@ -1638,15 +1638,7 @@ function uniqueRecords(records) {
 function topicStats(records) {
   const map = new Map();
   for (const record of uniqueRecords(records)) {
-    if (record.kind === 'exam' && Array.isArray(record.topicBreakdown)) {
-      for (const topic of record.topicBreakdown) {
-        const entry = map.get(topic.name) || { topic: topic.name, sessions: 0, total: 0 };
-        entry.sessions += 1;
-        entry.total += Number(topic.percentage) || 0;
-        map.set(topic.name, entry);
-      }
-      continue;
-    }
+    if (record.kind === 'exam') continue;
     for (const topic of record.topics || []) {
       const entry = map.get(topic) || { topic, sessions: 0, total: 0 };
       entry.sessions += 1;
@@ -1995,7 +1987,7 @@ function examSummaryText(report, { timedOut = false } = {}) {
 function renderExamReport(report, { timedOut = false } = {}) {
   const areas = report.topicBreakdown.filter((topic) => topic.correct < topic.total);
   const areasHtml = areas.length
-    ? `<ul class="exam-areas">${areas.map((topic) => `<li>${escapeHtml(topic.name)}: ${topic.total - topic.correct} incorrect of ${topic.total} (${topic.percentage}%)</li>`).join('')}</ul>`
+    ? `<ul class="exam-areas">${areas.map((topic) => `<li>${escapeHtml(topic.name)}: ${topic.total - topic.correct} incorrect of ${topic.total} (${topic.percentage}% correct)</li>`).join('')}</ul>`
     : '<p class="muted">No topic was done incorrectly.</p>';
 
   const topicRows = report.topicBreakdown.map((topic) => `

@@ -51,6 +51,7 @@ const formatHost = (host) => (isIP(host) === 6 ? `[${host}]` : host);
 const URL_HOST = formatHost(LAN_ENABLED ? LAN_HOST : LOCAL_HOST);
 const BASE_URL = `${SCHEME}://${URL_HOST}:${PORT}`;
 
+const DEFAULT_PORT = HTTPS_ENABLED ? 443 : 80;
 const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
 const ALLOWED_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
 if (PORT === 80) {
@@ -62,7 +63,9 @@ if (PORT === 80) {
 if (HTTPS_ENABLED) {
   ALLOWED_ORIGINS.add(`https://127.0.0.1:${PORT}`);
   ALLOWED_ORIGINS.add(`https://localhost:${PORT}`);
-  if (PORT === 80) {
+  if (PORT === 443) {
+    ALLOWED_HOSTS.add('127.0.0.1');
+    ALLOWED_HOSTS.add('localhost');
     ALLOWED_ORIGINS.add('https://127.0.0.1');
     ALLOWED_ORIGINS.add('https://localhost');
   }
@@ -70,6 +73,10 @@ if (HTTPS_ENABLED) {
 if (LAN_ENABLED) {
   ALLOWED_HOSTS.add(`${URL_HOST}:${PORT}`.toLowerCase());
   ALLOWED_ORIGINS.add(`${SCHEME}://${URL_HOST}:${PORT}`.toLowerCase());
+  if (PORT === DEFAULT_PORT) {
+    ALLOWED_HOSTS.add(URL_HOST.toLowerCase());
+    ALLOWED_ORIGINS.add(`${SCHEME}://${URL_HOST}`.toLowerCase());
+  }
 }
 
 function isAllowedHost(hostHeader) {

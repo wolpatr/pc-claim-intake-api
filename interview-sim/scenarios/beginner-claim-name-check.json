@@ -143,7 +143,7 @@
       "text": "Which check runs first, and why does the order matter for an input like \" A \"?"
     },
     {
-      "atMinute": 7,
+      "atMinute": 3,
       "phase": "test",
       "text": "Which message does each failing input expect, and does your method return exactly that text?"
     }

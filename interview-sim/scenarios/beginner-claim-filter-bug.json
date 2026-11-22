@@ -100,7 +100,7 @@
       "name": "open claims filter keeps only OPEN",
       "className": "OpenClaimsFilterTest",
       "regression": true,
-      "code": "import java.util.List;\n\npublic class OpenClaimsFilterTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C2\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C3\", \"OPEN\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(2, open.size(), \"open claim count\");\n        TestSupport.eq(\"C1\", open.get(0).id(), \"first open claim\");\n        TestSupport.eq(\"C3\", open.get(1).id(), \"second open claim\");\n        System.out.println(\"PASS: open claims filter keeps only OPEN\");\n    }\n}\n"
+      "code": "import java.util.List;\n\npublic class OpenClaimsFilterTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C2\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C3\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C4\", new String(\"OPEN\")));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(3, open.size(), \"open claim count\");\n        TestSupport.eq(\"C1\", open.get(0).id(), \"first open claim\");\n        TestSupport.eq(\"C3\", open.get(1).id(), \"second open claim\");\n        TestSupport.eq(\"C4\", open.get(2).id(), \"runtime-built open claim\");\n        System.out.println(\"PASS: open claims filter keeps only OPEN\");\n    }\n}\n"
     },
     {
       "name": "all closed claims return an empty list",
@@ -127,7 +127,7 @@
       {
         "name": "reopened claims join the open queue",
         "className": "ReopenedIncludedTest",
-        "code": "import java.util.List;\n\npublic class ReopenedIncludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C2\", \"REOPENED\"),\n                new ClaimFilter.Claim(\"C3\", \"CLOSED\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(2, open.size(), \"open plus reopened count\");\n        TestSupport.eq(\"C1\", open.get(0).id(), \"open claim\");\n        TestSupport.eq(\"C2\", open.get(1).id(), \"reopened claim\");\n        System.out.println(\"PASS: reopened claims join the open queue\");\n    }\n}\n"
+        "code": "import java.util.List;\n\npublic class ReopenedIncludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C2\", \"REOPENED\"),\n                new ClaimFilter.Claim(\"C3\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C4\", new String(\"REOPENED\")));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(3, open.size(), \"open plus reopened count\");\n        TestSupport.eq(\"C1\", open.get(0).id(), \"open claim\");\n        TestSupport.eq(\"C2\", open.get(1).id(), \"reopened claim\");\n        TestSupport.eq(\"C4\", open.get(2).id(), \"runtime-built reopened claim\");\n        System.out.println(\"PASS: reopened claims join the open queue\");\n    }\n}\n"
       },
       {
         "name": "closed and other statuses stay out of the queue",
@@ -137,7 +137,7 @@
       {
         "name": "open-only input still works after the change",
         "className": "OpenOnlyAfterChangeTest",
-        "code": "import java.util.List;\n\npublic class OpenOnlyAfterChangeTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C2\", \"OPEN\"));\n        TestSupport.eq(2, new ClaimFilter().openOnly(claims).size(), \"open claims still included\");\n        System.out.println(\"PASS: open-only input still works after the change\");\n    }\n}\n"
+        "code": "import java.util.List;\n\npublic class OpenOnlyAfterChangeTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C2\", new String(\"OPEN\")));\n        TestSupport.eq(2, new ClaimFilter().openOnly(claims).size(), \"open claims still included\");\n        System.out.println(\"PASS: open-only input still works after the change\");\n    }\n}\n"
       }
     ]
   },
@@ -150,7 +150,7 @@
       "text": "Which claim does the current condition keep, and which claim should it keep?"
     },
     {
-      "atMinute": 9,
+      "atMinute": 3,
       "phase": "test",
       "text": "State the root cause in one sentence before you edit the comparison."
     }

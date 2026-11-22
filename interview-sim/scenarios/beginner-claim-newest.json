@@ -133,7 +133,7 @@
       "text": "In one sentence, how will you decide which claim is newest?"
     },
     {
-      "atMinute": 8,
+      "atMinute": 3,
       "phase": "test",
       "text": "Which claim does your loop return right now, and why does that match or miss the expected one?"
     }

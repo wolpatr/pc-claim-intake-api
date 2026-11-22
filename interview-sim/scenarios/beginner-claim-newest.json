@@ -1,0 +1,184 @@
+{
+  "id": "beginner-claim-newest",
+  "title": "Find the newest claim",
+  "tagline": "Return the claim with the latest incident date, then break date ties by claim id.",
+  "difficulty": "Beginner",
+  "roundType": "coding",
+  "topics": [
+    "Claim domain",
+    "Java",
+    "Dates",
+    "Loops"
+  ],
+  "phaseTimes": {
+    "brief": 3,
+    "implement": 8,
+    "test": 4,
+    "change": 4,
+    "debrief": 3
+  },
+  "intro": "Hi, thanks for making the time. I am the developer on the claim intake team. Today's exercise is one small method: given a list of claims, pick the one with the latest incident date. Ask me anything before you start.",
+  "clarifyingQuestions": [
+    {
+      "id": "empty",
+      "topic": "Empty input",
+      "question": "What should the method return when the list is empty?",
+      "keywords": [
+        "empty",
+        "null",
+        "no claims",
+        "return"
+      ],
+      "answer": "Return null when the list is empty or null. Do not throw.",
+      "coach": "Ask about the empty case before writing the loop."
+    },
+    {
+      "id": "dates",
+      "topic": "Date comparison",
+      "question": "How should I compare the incident dates?",
+      "keywords": [
+        "incident date",
+        "local date",
+        "compare",
+        "latest",
+        "chronological"
+      ],
+      "answer": "Compare the LocalDate values directly; the later date wins. There are no time zones, times of day, or clock reads involved.",
+      "coach": "Ask how dates are compared so you do not hand-roll a comparator."
+    },
+    {
+      "id": "ties",
+      "topic": "Ties and ordering",
+      "question": "What if two claims share the latest incident date?",
+      "keywords": [
+        "tie",
+        "same date",
+        "claim id",
+        "order",
+        "greater"
+      ],
+      "answer": "For the base round, any claim with the latest date is acceptable and the tests avoid ties. The follow-up pins the tie-break to the greater claim id.",
+      "coach": "Ask what happens on a tie, even if the base tests avoid it."
+    }
+  ],
+  "clarifyingFallback": "Assume the list may be null or empty, dates are non-null LocalDate values, and you should return the claim object from the list rather than a copy. Choose the simplest rule for anything else and say the assumption out loud.",
+  "problemStatement": "### Context\n\nYou are working on the claim intake API. Each claim has an id and an incident date, and a dashboard needs a helper that finds the newest one.\n\n### Your task\n\nImplement ClaimPicker.latest(List<Claim> claims).\n\n### Rules\n\n- Return the claim whose incidentDate is latest.\n- Return null when the list is empty or null.\n- Return the claim from the list itself; do not create a new Claim.\n- Do not modify the list or the claims.\n- A single loop over the list is enough. Streams are optional.\n\n### Visible examples\n\n- [C1 2026-01-10, C2 2026-03-02, C3 2026-02-14] returns C2.\n- [] returns null.\n- [C9 2026-05-01] returns C9.\n\n### Notes\n\n- Keep the class in the default package and in the starter file.\n- The hidden tests call latest directly on a ClaimPicker instance.",
+  "fileName": "ClaimPicker.java",
+  "starterCode": "import java.time.LocalDate;\nimport java.util.List;\n\npublic final class ClaimPicker {\n\n    public record Claim(String id, LocalDate incidentDate) {\n    }\n\n    public Claim latest(List<Claim> claims) {\n        // TODO: return the claim with the latest incident date,\n        // or null when the list is empty.\n        return claims == null || claims.isEmpty() ? null : claims.get(0);\n    }\n}\n",
+  "examples": [
+    {
+      "input": "claims = [C1 2026-01-10, C2 2026-03-02, C3 2026-02-14]",
+      "output": "C2 (2026-03-02)"
+    },
+    {
+      "input": "claims = []",
+      "output": "null"
+    },
+    {
+      "input": "claims = [C9 2026-05-01]",
+      "output": "C9"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "latest claim wins in a mixed list",
+      "className": "LatestClaimTest",
+      "code": "import java.time.LocalDate;\nimport java.util.List;\n\npublic class LatestClaimTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimPicker.Claim(\"C1\", LocalDate.of(2026, 1, 10)),\n                new ClaimPicker.Claim(\"C2\", LocalDate.of(2026, 3, 2)),\n                new ClaimPicker.Claim(\"C3\", LocalDate.of(2026, 2, 14)));\n        var latest = new ClaimPicker().latest(claims);\n        TestSupport.eq(\"C2\", latest.id(), \"newest claim id\");\n        TestSupport.eq(LocalDate.of(2026, 3, 2), latest.incidentDate(), \"newest incident date\");\n        System.out.println(\"PASS: latest claim wins in a mixed list\");\n    }\n}\n"
+    },
+    {
+      "name": "empty list returns null",
+      "className": "EmptyClaimListTest",
+      "code": "import java.util.List;\n\npublic class EmptyClaimListTest {\n    public static void main(String[] args) {\n        TestSupport.eq(null, new ClaimPicker().latest(List.of()), \"empty list returns null\");\n        TestSupport.eq(null, new ClaimPicker().latest(null), \"null list returns null\");\n        System.out.println(\"PASS: empty list returns null\");\n    }\n}\n"
+    },
+    {
+      "name": "a single claim is returned",
+      "className": "SingleClaimTest",
+      "code": "import java.time.LocalDate;\nimport java.util.List;\n\npublic class SingleClaimTest {\n    public static void main(String[] args) {\n        var claim = new ClaimPicker.Claim(\"C9\", LocalDate.of(2026, 5, 1));\n        TestSupport.eq(claim, new ClaimPicker().latest(List.of(claim)), \"single claim\");\n        System.out.println(\"PASS: a single claim is returned\");\n    }\n}\n"
+    },
+    {
+      "name": "the newest claim at the end is found",
+      "className": "LastIsNewestTest",
+      "code": "import java.time.LocalDate;\nimport java.util.List;\n\npublic class LastIsNewestTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimPicker.Claim(\"C1\", LocalDate.of(2025, 12, 1)),\n                new ClaimPicker.Claim(\"C2\", LocalDate.of(2026, 1, 1)),\n                new ClaimPicker.Claim(\"C3\", LocalDate.of(2026, 6, 15)));\n        TestSupport.eq(\"C3\", new ClaimPicker().latest(claims).id(), \"newest claim at the end\");\n        System.out.println(\"PASS: the newest claim at the end is found\");\n    }\n}\n"
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Break date ties by claim id.",
+    "statement": "### Change request\n\nThe nightly job needs a stable winner when several claims share the latest incident date.\n\n- If two or more claims share the latest incident date, return the claim with the greater claim id, using plain String order.\n- Keep the existing rules: an empty or null list returns null, and the list must not be modified.\n- Behaviour for unique dates stays the same.",
+    "starterCode": "import java.time.LocalDate;\nimport java.util.List;\n\npublic final class ClaimPicker {\n\n    public record Claim(String id, LocalDate incidentDate) {\n    }\n\n    public Claim latest(List<Claim> claims) {\n        // TODO: when dates tie, return the claim with the greater id.\n        if (claims == null || claims.isEmpty()) {\n            return null;\n        }\n        Claim best = claims.get(0);\n        for (int index = 1; index < claims.size(); index += 1) {\n            Claim candidate = claims.get(index);\n            if (candidate.incidentDate().compareTo(best.incidentDate()) > 0) {\n                best = candidate;\n            }\n        }\n        return best;\n    }\n}\n",
+    "fileName": "ClaimPicker.java",
+    "hiddenTests": [
+      {
+        "name": "greater claim id wins a date tie",
+        "className": "DateTieByIdTest",
+        "code": "import java.time.LocalDate;\nimport java.util.List;\n\npublic class DateTieByIdTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimPicker.Claim(\"C7\", LocalDate.of(2026, 4, 1)),\n                new ClaimPicker.Claim(\"C9\", LocalDate.of(2026, 4, 1)));\n        TestSupport.eq(\"C9\", new ClaimPicker().latest(claims).id(), \"greater id wins the tie\");\n        System.out.println(\"PASS: greater claim id wins a date tie\");\n    }\n}\n"
+      },
+      {
+        "name": "tie-break works when the greater id comes first",
+        "className": "DateTieAnyOrderTest",
+        "code": "import java.time.LocalDate;\nimport java.util.List;\n\npublic class DateTieAnyOrderTest {\n    public static void main(String[] args) {\n        TestSupport.eq(\"C9\", new ClaimPicker().latest(List.of(\n                new ClaimPicker.Claim(\"C9\", LocalDate.of(2026, 4, 1)),\n                new ClaimPicker.Claim(\"C7\", LocalDate.of(2026, 4, 1)))).id(), \"greater id wins regardless of order\");\n        System.out.println(\"PASS: tie-break works when the greater id comes first\");\n    }\n}\n"
+      },
+      {
+        "name": "unique dates still return the newest claim",
+        "className": "UniqueDatesStillWinTest",
+        "code": "import java.time.LocalDate;\nimport java.util.List;\n\npublic class UniqueDatesStillWinTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimPicker.Claim(\"C2\", LocalDate.of(2026, 4, 1)),\n                new ClaimPicker.Claim(\"C1\", LocalDate.of(2026, 4, 2)));\n        TestSupport.eq(\"C1\", new ClaimPicker().latest(claims).id(), \"date comparison still wins\");\n        TestSupport.eq(\"C1\", new ClaimPicker().latest(List.of(\n                new ClaimPicker.Claim(\"C1\", LocalDate.of(2026, 4, 2)),\n                new ClaimPicker.Claim(\"C2\", LocalDate.of(2026, 4, 1)))).id(), \"later date wins over a greater id\");\n        System.out.println(\"PASS: unique dates still return the newest claim\");\n    }\n}\n"
+      }
+    ]
+  },
+  "referenceSolution": "import java.time.LocalDate;\nimport java.util.List;\n\npublic final class ClaimPicker {\n\n    public record Claim(String id, LocalDate incidentDate) {\n    }\n\n    public Claim latest(List<Claim> claims) {\n        if (claims == null || claims.isEmpty()) {\n            return null;\n        }\n        Claim best = claims.get(0);\n        for (int index = 1; index < claims.size(); index += 1) {\n            Claim candidate = claims.get(index);\n            int byDate = candidate.incidentDate().compareTo(best.incidentDate());\n            if (byDate > 0 || (byDate == 0 && candidate.id().compareTo(best.id()) > 0)) {\n                best = candidate;\n            }\n        }\n        return best;\n    }\n}\n",
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 3,
+      "phase": "implement",
+      "text": "In one sentence, how will you decide which claim is newest?"
+    },
+    {
+      "atMinute": 3,
+      "phase": "test",
+      "text": "Which claim does your loop return right now, and why does that match or miss the expected one?"
+    }
+  ],
+  "fallbackProbe": "What is the smallest input that would show your method is not returning the newest claim?",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me any questions you have. When you are ready, tell me your plan and start the clock.",
+    "implement": "The timer is running. Say what you are comparing and how your loop tracks the best claim so far, then write the method.",
+    "test": "Run the tests. Read the first failure, explain it, then fix it.",
+    "change": "Here is the change request. Keep the existing behaviour and add the tie-break.",
+    "debrief": "Time is up. Let us review the tests, your approach, and the rubric."
+  },
+  "hints": [
+    "You need one variable for the best claim so far and one loop over the list.",
+    "Compare dates with compareTo. A positive result means the candidate is later than the best so far.",
+    "After the date comparison, add the tie case: when compareTo returns 0, compare the two claim ids."
+  ],
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 40,
+      "criterion": "The latest-claim method passes the hidden suite",
+      "strongAnswer": "The loop returns the claim with the latest incident date and handles empty and single-claim lists."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "The tie-break change passes the hidden suite",
+      "strongAnswer": "Equal incident dates are resolved by the greater claim id without breaking date-only cases."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Clarified the edge cases before coding",
+      "strongAnswer": "Asked about empty input, date comparison, and ties before choosing the loop shape."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Worked independently",
+      "strongAnswer": "Found the loop and comparison with no hints, or after one genuine attempt."
+    }
+  ]
+}

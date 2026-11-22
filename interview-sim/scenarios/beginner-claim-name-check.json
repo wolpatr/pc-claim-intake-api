@@ -1,0 +1,194 @@
+{
+  "id": "beginner-claim-name-check",
+  "title": "Validate a claimant name",
+  "tagline": "Check one field: the claimant name must be present, non-blank, and at least two characters.",
+  "difficulty": "Beginner",
+  "roundType": "coding",
+  "topics": [
+    "Claim domain",
+    "Validation",
+    "Strings",
+    "Java"
+  ],
+  "phaseTimes": {
+    "brief": 3,
+    "implement": 8,
+    "test": 4,
+    "change": 3,
+    "debrief": 3
+  },
+  "intro": "Hi, thanks for making the time. This round is a single validation method for the claim intake form: check the claimant name and return one error message. Ask me anything before you start.",
+  "clarifyingQuestions": [
+    {
+      "id": "required",
+      "topic": "Missing name",
+      "question": "What should happen when the name is null or blank?",
+      "keywords": [
+        "null",
+        "blank",
+        "missing",
+        "required",
+        "whitespace"
+      ],
+      "answer": "Return \"Claimant name is required.\" for null, empty, or whitespace-only input. Do not throw.",
+      "coach": "Ask how missing and whitespace-only input are handled."
+    },
+    {
+      "id": "length",
+      "topic": "Minimum length",
+      "question": "What is the minimum allowed length?",
+      "keywords": [
+        "length",
+        "minimum",
+        "two",
+        "characters",
+        "trim"
+      ],
+      "answer": "After trimming, the name must be at least 2 characters long.",
+      "coach": "Ask whether spaces count toward the length."
+    },
+    {
+      "id": "message",
+      "topic": "Error messages",
+      "question": "Which error message should I return for an invalid name?",
+      "keywords": [
+        "error",
+        "message",
+        "return",
+        "exact",
+        "text"
+      ],
+      "answer": "Return the exact messages in the problem statement, and null when the name is valid. Do not throw.",
+      "coach": "Ask whether the tests match exact message text."
+    }
+  ],
+  "clarifyingFallback": "Assume the method returns a String error message or null, never throws, and the tests compare exact message text. Choose the simplest interpretation for anything else and say it out loud.",
+  "problemStatement": "### Context\n\nThe claim intake form highlights one field at a time. You are implementing the claimant-name check.\n\n### Your task\n\nImplement ClaimNameValidator.validateName(String name). Return the first error message, or null when the name is valid.\n\n### Rules\n\n- A null, empty, or whitespace-only name returns exactly: Claimant name is required.\n- After trimming, a name shorter than 2 characters returns exactly: Claimant name must be at least 2 characters.\n- Trim before checking the length; surrounding spaces are not part of the name.\n- Any other name is valid and returns null.\n- Do not throw exceptions.\n\n### Visible examples\n\n- validateName(null) returns \"Claimant name is required.\"\n- validateName(\"   \") returns \"Claimant name is required.\"\n- validateName(\"A\") returns \"Claimant name must be at least 2 characters.\"\n- validateName(\"  Ada  \") returns null.\n\n### Notes\n\n- Keep the class in the default package and in the starter file.\n- The hidden tests call validateName directly on a ClaimNameValidator instance.",
+  "fileName": "ClaimNameValidator.java",
+  "starterCode": "public final class ClaimNameValidator {\n\n    public String validateName(String name) {\n        // TODO: return the first error message, or null when the name is valid.\n        return null;\n    }\n}\n",
+  "examples": [
+    {
+      "input": "validateName(null)",
+      "output": "Claimant name is required."
+    },
+    {
+      "input": "validateName(\"   \")",
+      "output": "Claimant name is required."
+    },
+    {
+      "input": "validateName(\"A\")",
+      "output": "Claimant name must be at least 2 characters."
+    },
+    {
+      "input": "validateName(\"  Ada  \")",
+      "output": "null"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "a null name is rejected",
+      "className": "NullNameTest",
+      "code": "public class NullNameTest {\n    public static void main(String[] args) {\n        TestSupport.eq(\"Claimant name is required.\", new ClaimNameValidator().validateName(null), \"null name\");\n        System.out.println(\"PASS: a null name is rejected\");\n    }\n}\n"
+    },
+    {
+      "name": "a whitespace-only name is rejected",
+      "className": "BlankNameTest",
+      "code": "public class BlankNameTest {\n    public static void main(String[] args) {\n        var validator = new ClaimNameValidator();\n        TestSupport.eq(\"Claimant name is required.\", validator.validateName(\"   \"), \"spaces only\");\n        TestSupport.eq(\"Claimant name is required.\", validator.validateName(\"\\t\\n \"), \"whitespace characters\");\n        System.out.println(\"PASS: a whitespace-only name is rejected\");\n    }\n}\n"
+    },
+    {
+      "name": "a one-character name is rejected after trimming",
+      "className": "ShortNameTest",
+      "code": "public class ShortNameTest {\n    public static void main(String[] args) {\n        TestSupport.eq(\"Claimant name must be at least 2 characters.\",\n                new ClaimNameValidator().validateName(\" A \"),\n                \"one character after trimming\");\n        System.out.println(\"PASS: a one-character name is rejected after trimming\");\n    }\n}\n"
+    },
+    {
+      "name": "a trimmed valid name is accepted",
+      "className": "TrimmedNameTest",
+      "code": "public class TrimmedNameTest {\n    public static void main(String[] args) {\n        TestSupport.eq(null, new ClaimNameValidator().validateName(\"  Ada  \"), \"trimmed name\");\n        System.out.println(\"PASS: a trimmed valid name is accepted\");\n    }\n}\n"
+    },
+    {
+      "name": "a two-character name is accepted",
+      "className": "TwoCharacterNameTest",
+      "code": "public class TwoCharacterNameTest {\n    public static void main(String[] args) {\n        TestSupport.eq(null, new ClaimNameValidator().validateName(\"Al\"), \"two characters\");\n        System.out.println(\"PASS: a two-character name is accepted\");\n    }\n}\n"
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Also reject names longer than 80 characters.",
+    "statement": "### Change request\n\nThe claims portal now has a hard column limit for the claimant name.\n\n- After trimming, a name longer than 80 characters returns exactly: Claimant name must be at most 80 characters.\n- A trimmed name of exactly 80 characters remains valid.\n- Keep the required and minimum-length rules unchanged.",
+    "starterCode": "public final class ClaimNameValidator {\n\n    public String validateName(String name) {\n        if (name == null) {\n            return \"Claimant name is required.\";\n        }\n        String trimmed = name.trim();\n        if (trimmed.isEmpty()) {\n            return \"Claimant name is required.\";\n        }\n        if (trimmed.length() < 2) {\n            return \"Claimant name must be at least 2 characters.\";\n        }\n        // TODO: also reject trimmed names longer than 80 characters.\n        return null;\n    }\n}\n",
+    "fileName": "ClaimNameValidator.java",
+    "hiddenTests": [
+      {
+        "name": "a name longer than 80 characters is rejected",
+        "className": "LongNameTest",
+        "code": "public class LongNameTest {\n    public static void main(String[] args) {\n        TestSupport.eq(\"Claimant name must be at most 80 characters.\",\n                new ClaimNameValidator().validateName(\"a\".repeat(81)),\n                \"81 characters\");\n        System.out.println(\"PASS: a name longer than 80 characters is rejected\");\n    }\n}\n"
+      },
+      {
+        "name": "a name of exactly 80 characters is accepted",
+        "className": "MaxLengthNameTest",
+        "code": "public class MaxLengthNameTest {\n    public static void main(String[] args) {\n        TestSupport.eq(null, new ClaimNameValidator().validateName(\"b\".repeat(80)), \"80 characters\");\n        System.out.println(\"PASS: a name of exactly 80 characters is accepted\");\n    }\n}\n"
+      },
+      {
+        "name": "length is measured after trimming",
+        "className": "PaddedLongNameTest",
+        "code": "public class PaddedLongNameTest {\n    public static void main(String[] args) {\n        var validator = new ClaimNameValidator();\n        TestSupport.eq(null, validator.validateName(\"  \" + \"c\".repeat(80) + \"  \"),\n                \"padded 80 characters\");\n        TestSupport.eq(\"Claimant name must be at most 80 characters.\",\n                validator.validateName(\"  \" + \"c\".repeat(81) + \"  \"),\n                \"padded 81 characters\");\n        System.out.println(\"PASS: length is measured after trimming\");\n    }\n}\n"
+      }
+    ]
+  },
+  "referenceSolution": "public final class ClaimNameValidator {\n\n    public String validateName(String name) {\n        if (name == null) {\n            return \"Claimant name is required.\";\n        }\n        String trimmed = name.trim();\n        if (trimmed.isEmpty()) {\n            return \"Claimant name is required.\";\n        }\n        if (trimmed.length() < 2) {\n            return \"Claimant name must be at least 2 characters.\";\n        }\n        if (trimmed.length() > 80) {\n            return \"Claimant name must be at most 80 characters.\";\n        }\n        return null;\n    }\n}\n",
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 2,
+      "phase": "implement",
+      "text": "Which check runs first, and why does the order matter for an input like \" A \"?"
+    },
+    {
+      "atMinute": 3,
+      "phase": "test",
+      "text": "Which message does each failing input expect, and does your method return exactly that text?"
+    }
+  ],
+  "fallbackProbe": "Which single input would prove your method trims before it checks the length?",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me any questions you have. When you are ready, tell me your plan and start the clock.",
+    "implement": "The timer is running. Talk through the order of the checks, then write the method.",
+    "test": "Run the tests. Read the first failure, explain it, then fix it.",
+    "change": "Here is the change request. Add the new limit without changing the existing rules.",
+    "debrief": "Time is up. Let us review the tests, your checks, and the rubric."
+  },
+  "hints": [
+    "Handle null first, because you cannot trim null.",
+    "Trim once, store the result, and run every length check against the trimmed value.",
+    "The checks are ordered: null, empty after trimming, shorter than 2, then longer than 80."
+  ],
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 40,
+      "criterion": "The name validation passes the hidden suite",
+      "strongAnswer": "Null, blank, and one-character names return the exact messages, and valid trimmed names return null."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "The length-limit change passes the hidden suite",
+      "strongAnswer": "Names over 80 characters are rejected after trimming, while exactly 80 characters remains valid."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Clarified the rules before coding",
+      "strongAnswer": "Asked about null and blank input, whether trimming counts, and whether messages must match exactly."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Worked independently",
+      "strongAnswer": "Wrote the ordered checks with no hints, or after one genuine attempt."
+    }
+  ]
+}

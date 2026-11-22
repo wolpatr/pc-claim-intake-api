@@ -104,7 +104,7 @@
   "changeRequest": {
     "prompt": "Break date ties by claim id.",
     "statement": "### Change request\n\nThe nightly job needs a stable winner when several claims share the latest incident date.\n\n- If two or more claims share the latest incident date, return the claim with the greater claim id, using plain String order.\n- Keep the existing rules: an empty or null list returns null, and the list must not be modified.\n- Behaviour for unique dates stays the same.",
-    "starterCode": "import java.time.LocalDate;\nimport java.util.List;\n\npublic final class ClaimPicker {\n\n    public record Claim(String id, LocalDate incidentDate) {\n    }\n\n    public Claim latest(List<Claim> claims) {\n        // TODO: return the claim with the latest incident date. When dates tie,\n        // return the claim with the greater id.\n        return claims == null || claims.isEmpty() ? null : claims.get(0);\n    }\n}\n",
+    "starterCode": "import java.time.LocalDate;\nimport java.util.List;\n\npublic final class ClaimPicker {\n\n    public record Claim(String id, LocalDate incidentDate) {\n    }\n\n    public Claim latest(List<Claim> claims) {\n        // TODO: when dates tie, return the claim with the greater id.\n        if (claims == null || claims.isEmpty()) {\n            return null;\n        }\n        Claim best = claims.get(0);\n        for (int index = 1; index < claims.size(); index += 1) {\n            Claim candidate = claims.get(index);\n            if (candidate.incidentDate().compareTo(best.incidentDate()) > 0) {\n                best = candidate;\n            }\n        }\n        return best;\n    }\n}\n",
     "fileName": "ClaimPicker.java",
     "hiddenTests": [
       {
@@ -120,7 +120,7 @@
       {
         "name": "unique dates still return the newest claim",
         "className": "UniqueDatesStillWinTest",
-        "code": "import java.time.LocalDate;\nimport java.util.List;\n\npublic class UniqueDatesStillWinTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimPicker.Claim(\"C1\", LocalDate.of(2026, 4, 2)),\n                new ClaimPicker.Claim(\"C2\", LocalDate.of(2026, 4, 1)));\n        TestSupport.eq(\"C1\", new ClaimPicker().latest(claims).id(), \"date comparison still wins\");\n        System.out.println(\"PASS: unique dates still return the newest claim\");\n    }\n}\n"
+        "code": "import java.time.LocalDate;\nimport java.util.List;\n\npublic class UniqueDatesStillWinTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimPicker.Claim(\"C2\", LocalDate.of(2026, 4, 1)),\n                new ClaimPicker.Claim(\"C1\", LocalDate.of(2026, 4, 2)));\n        TestSupport.eq(\"C1\", new ClaimPicker().latest(claims).id(), \"date comparison still wins\");\n        System.out.println(\"PASS: unique dates still return the newest claim\");\n    }\n}\n"
       }
     ]
   },

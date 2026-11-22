@@ -1908,7 +1908,7 @@ async function submitExam({ timedOut = false } = {}) {
   exam.submitting = true;
   exam.submitted = true;
   exam.running = false;
-  exam.timedOut = Boolean(timedOut);
+  exam.timedOut = exam.timedOut || Boolean(timedOut);
   stopExamTicker();
   renderExamNav();
 

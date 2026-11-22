@@ -79,7 +79,7 @@ Privacy note: when AI is enabled, the clarifying question, the current editor co
 
 ## Session controls
 
-- Phase times default to 5 / 25 / 10 / 10 / 10 minutes and can be changed in the briefing dialog before starting.
+- Each scenario sets its own `phaseTimes`; beginner rounds are shorter than the Associate-and-up rounds. You can change every phase in the briefing dialog before starting.
 - The timer counts active phase time only. Pause and resume it, reset a phase, or advance by hand at any time. A phase that runs past its budget keeps counting overtime, which lowers the time-discipline score.
 - Checkpoint probes fire automatically at the scenario's configured minutes. `Ask for a probe` requests one adaptive follow-up when AI is available, and a scripted probe otherwise.
 - `Request hint` returns three graded hints: nudge, then direction, then near-answer. Every hint is recorded for scoring.

@@ -139,12 +139,12 @@ function cancelSpeech() {
   } catch {}
 }
 
-function speakText(text) {
+function speakText(text, { interrupt = true } = {}) {
   const content = String(text || '').trim();
   if (!content || !speechSupported()) return false;
   try {
     const synth = window.speechSynthesis;
-    synth.cancel();
+    if (interrupt) synth.cancel();
     const utterance = new window.SpeechSynthesisUtterance(content);
     utterance.rate = 1;
     utterance.pitch = 1;
@@ -158,7 +158,7 @@ function speakText(text) {
 }
 
 function speakIfAuto(text) {
-  if (voice.autoSpeak) speakText(text);
+  if (voice.autoSpeak) speakText(text, { interrupt: false });
 }
 
 function setVoiceNote(text) {

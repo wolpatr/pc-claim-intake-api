@@ -113,7 +113,7 @@ Both routes sit behind the same local-origin, host-header, and JSON content-type
 Each interviewer message has a Play control that reads it aloud with `window.speechSynthesis` and locally installed voices.
 The briefing opening and the exam feedback summary have their own Play controls.
 The auto-speak toggle in the top bar speaks each new interviewer message automatically, and the preference is stored in `localStorage` when storage is available.
-Starting a new spoken message, or turning auto-speak off, cancels the previous utterance; speech never blocks the text UI.
+Pressing a Play control or turning auto-speak off interrupts the current utterance, while the auto-speak toggle queues each new interviewer message so a burst of them is read in order; speech never blocks the text UI.
 
 The microphone button beside the question input uses `window.SpeechRecognition` or `webkitSpeechRecognition` for dictation.
 While listening it shows the interim transcript, and on the final result it inserts the transcript into the input without sending the message.

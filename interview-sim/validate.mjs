@@ -418,14 +418,6 @@ function validateExamChecks() {
     id: question.id,
     selected: (question.answer + 1) % question.options.length,
   })));
-  const expectedPlanOrder = allWrong.topicBreakdown
-    .filter((topic) => topic.missedIds.length > 0)
-    .sort((left, right) =>
-      (right.total - right.correct) - (left.total - left.correct) ||
-      left.percentage - right.percentage ||
-      bank.topics.findIndex((topic) => topic.id === left.id) - bank.topics.findIndex((topic) => topic.id === right.id),
-    )
-    .map((topic) => topic.id);
   const missedByTopic = new Map();
   for (const miss of allWrong.missed) {
     const list = missedByTopic.get(miss.topic) || [];
@@ -442,14 +434,12 @@ function validateExamChecks() {
       allWrong.grade === 'Needs another pass' &&
       allWrong.missed.length === DEFAULT_EXAM_COUNT &&
       allWrong.plan.length === bank.topics.length &&
-      allWrong.plan.map((item) => item.id).join('|') === expectedPlanOrder.join('|') &&
       planQuestionsOk,
-    'exam scoring handles the all-wrong case and ranks the tailored plan',
+    'exam scoring handles the all-wrong case and plans every missed topic',
     JSON.stringify({
       correct: allWrong.correct,
       grade: allWrong.grade,
       plan: allWrong.plan.map((item) => item.id),
-      expected: expectedPlanOrder,
       planQuestionsOk,
     }),
   );
@@ -476,6 +466,32 @@ function validateExamChecks() {
     tied.plan.map((item) => item.id).join('|') === 'git|project',
     'exam plan breaks equal missed counts by the lower accuracy',
     JSON.stringify(tied.plan.map((item) => `${item.id}: ${item.missedCount} missed, ${item.accuracy}% correct`)),
+  );
+
+  const priorityFixture = {
+    project: bank.questions.filter((question) => question.topic === 'project').slice(0, 2),
+    testing: bank.questions.filter((question) => question.topic === 'testing').slice(0, 4),
+  };
+  const priorityAnswers = [
+    ...priorityFixture.project.map((question) => ({
+      id: question.id,
+      selected: (question.answer + 1) % question.options.length,
+    })),
+    ...priorityFixture.testing.map((question, index) => ({
+      id: question.id,
+      selected: index < 3 ? (question.answer + 1) % question.options.length : question.answer,
+    })),
+  ];
+  const prioritized = scoreExam(
+    [...priorityFixture.project, ...priorityFixture.testing].map((question) => question.id),
+    priorityAnswers,
+  );
+  record(
+    prioritized.plan.map((item) => item.id).join('|') === 'testing|project' &&
+      prioritized.plan[0].missedCount === 3 &&
+      prioritized.plan[1].missedCount === 2,
+    'exam plan ranks the topic with the most missed questions first regardless of bank order',
+    JSON.stringify(prioritized.plan.map((item) => `${item.id}: ${item.missedCount} missed, ${item.accuracy}% correct`)),
   );
 
   const partialAnswers = selection.map((question) => {

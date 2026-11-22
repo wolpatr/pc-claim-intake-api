@@ -7,6 +7,7 @@ A small P&C (property & casualty) claim-intake REST API in Java. This is a **lea
 - Accept a claim (mock data)
 - Validate required fields
 - Retrieve a claim
+- List claims, newest first, optionally filtered by status
 - Update a claim's status
 
 ## Study plan
@@ -21,8 +22,8 @@ The repository contains a typed, in-memory domain model for claim intake, an HTT
 - `com.example.claimintake.domain` — immutable `Claim`, the claimant-supplied `ClaimSubmission`, the `ClaimStatus` enum (`OPEN`, `IN_REVIEW`, `CLOSED`), and the `ClaimType` enum.
 - `com.example.claimintake.validation` — `ClaimValidator` checks required fields, email and phone format, incident date, and amount, then throws a `ValidationException` that lists every problem found.
 - `com.example.claimintake.repository` — `ClaimRepository` interface with an in-memory implementation. Claims live only as long as the process.
-- `com.example.claimintake.service` — `ClaimService` interface and implementation for submitting a claim, retrieving it by id, and updating its status.
-- `com.example.claimintake.web` — `ClaimController` exposes the four user stories as JSON endpoints, with one shared error shape for validation, not-found, and malformed-JSON responses.
+- `com.example.claimintake.service` — `ClaimService` interface and implementation for submitting a claim, retrieving it by id, listing claims with an optional status filter, and updating its status.
+- `com.example.claimintake.web` — `ClaimController` exposes the user stories as JSON endpoints, with one shared error shape for validation, not-found, and malformed-JSON responses.
 
 Run the tests with `./mvnw test` (`mvnw.cmd test` on Windows). Java 17 or newer is required.
 
@@ -35,6 +36,7 @@ Start the application with `./mvnw spring-boot:run` (`mvnw.cmd spring-boot:run` 
 | Method | Path | Description |
 | --- | --- | --- |
 | `POST` | `/claims` | Accept a claim. Returns `201 Created` with the recorded claim, including its generated `id` and `OPEN` status. Invalid input returns `400 Bad Request`. |
+| `GET` | `/claims` | List every claim, newest first. Accepts an optional `status` query parameter (`OPEN`, `IN_REVIEW`, or `CLOSED`); any other value returns `400 Bad Request`. |
 | `GET` | `/claims/{id}` | Retrieve a claim by id. Returns `200 OK` with the full record, or `404 Not Found`. |
 | `PATCH` | `/claims/{id}/status` | Update only the status from a JSON body such as `{"status":"IN_REVIEW"}`. Returns `200 OK` with the updated claim, `400 Bad Request` for an unrecognized status, or `404 Not Found`. |
 

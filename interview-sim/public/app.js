@@ -1756,7 +1756,7 @@ function renderExamNav() {
   $('examPrevBtn').disabled = exam.index <= 0;
   $('examNextBtn').disabled = exam.index >= last;
   $('examPauseBtn').textContent = exam.running ? 'Pause' : 'Resume';
-  $('examPauseBtn').disabled = exam.submitted;
+  $('examPauseBtn').disabled = exam.submitted || exam.remaining <= 0;
   $('examSubmitBtn').disabled = exam.submitted || exam.submitting;
   $('examSubmitBtn').textContent = exam.submitting ? 'Submitting...' : 'Submit exam';
 }
@@ -1803,7 +1803,7 @@ function goToExamQuestion(index) {
 }
 
 function toggleExamPause() {
-  if (!exam.active || exam.submitted) return;
+  if (!exam.active || exam.submitted || exam.remaining <= 0) return;
   if (exam.running) {
     exam.running = false;
     exam.manualPause = true;
@@ -1964,7 +1964,8 @@ async function submitExam({ timedOut = false } = {}) {
     if (token !== exam.token) return;
     exam.submitted = false;
     if (!exam.timedOut && exam.remaining > 0) {
-      exam.running = wasRunning;
+      exam.running = wasRunning && !document.hidden;
+      exam.pausedByVisibility = Boolean(wasRunning && document.hidden);
       exam.lastTick = performance.now();
       startExamTicker();
     }

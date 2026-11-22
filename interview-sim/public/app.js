@@ -2290,14 +2290,16 @@ function bindEvents() {
     }
   });
 
-  for (const id of ['briefingDialog', 'debriefDialog', 'historyDialog', 'examReportDialog']) {
+  for (const id of ['briefingDialog', 'debriefDialog', 'historyDialog']) {
     const dialog = $(id);
     dialog.addEventListener('click', (event) => {
       if (event.target !== dialog) return;
-      if (id === 'examReportDialog') exitExam();
-      else dialog.close();
+      dialog.close();
     });
   }
+  $('examReportDialog').addEventListener('cancel', (event) => {
+    event.preventDefault();
+  });
 
   document.addEventListener('visibilitychange', () => {
     if (!exam.active || exam.submitted) return;

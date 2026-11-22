@@ -120,7 +120,7 @@
       {
         "name": "unique dates still return the newest claim",
         "className": "UniqueDatesStillWinTest",
-        "code": "import java.time.LocalDate;\nimport java.util.List;\n\npublic class UniqueDatesStillWinTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimPicker.Claim(\"C2\", LocalDate.of(2026, 4, 1)),\n                new ClaimPicker.Claim(\"C1\", LocalDate.of(2026, 4, 2)));\n        TestSupport.eq(\"C1\", new ClaimPicker().latest(claims).id(), \"date comparison still wins\");\n        System.out.println(\"PASS: unique dates still return the newest claim\");\n    }\n}\n"
+        "code": "import java.time.LocalDate;\nimport java.util.List;\n\npublic class UniqueDatesStillWinTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimPicker.Claim(\"C2\", LocalDate.of(2026, 4, 1)),\n                new ClaimPicker.Claim(\"C1\", LocalDate.of(2026, 4, 2)));\n        TestSupport.eq(\"C1\", new ClaimPicker().latest(claims).id(), \"date comparison still wins\");\n        TestSupport.eq(\"C1\", new ClaimPicker().latest(List.of(\n                new ClaimPicker.Claim(\"C1\", LocalDate.of(2026, 4, 2)),\n                new ClaimPicker.Claim(\"C2\", LocalDate.of(2026, 4, 1)))).id(), \"later date wins over a greater id\");\n        System.out.println(\"PASS: unique dates still return the newest claim\");\n    }\n}\n"
       }
     ]
   },

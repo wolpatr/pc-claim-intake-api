@@ -25,9 +25,53 @@ From the repository root:
 node interview-sim/server.mjs
 ```
 
-Open http://127.0.0.1:4321. The server binds to `127.0.0.1` only. Set `INTERVIEW_SIM_PORT` to change the port.
+Open http://127.0.0.1:4321. By default the server binds to `127.0.0.1` only. Set `INTERVIEW_SIM_PORT` to change the port. To serve the app to an Android phone on the same Wi-Fi, see [Install on Android](#install-on-android).
 
 There is no build step, no bundler, and no CDN asset.
+
+## Install on Android
+
+Android installs a web app only from a secure context. An `https://` origin qualifies, and so does `http://localhost`, but a plain HTTP address on the LAN does not. Choose one of the two paths below.
+
+### Path A: LAN + HTTPS (recommended, full app install)
+
+1. Find this computer's Wi-Fi IPv4 address (`ipconfig` on Windows), for example `192.168.1.42`.
+2. Allow Node through the firewall for private networks when Windows asks, and use a home or office Wi-Fi you trust.
+3. From the repository root, start the server (PowerShell):
+
+```powershell
+$env:INTERVIEW_SIM_LAN = "1"
+$env:INTERVIEW_SIM_PUBLIC_HOST = "192.168.1.42"
+$env:INTERVIEW_SIM_HTTPS = "1"
+node interview-sim/server.mjs
+```
+
+`INTERVIEW_SIM_LAN=1` is the opt-in LAN mode. It binds all interfaces (`0.0.0.0`) and adds exactly the chosen `192.168.1.42:4321` host name to the allowed hosts and origins. `INTERVIEW_SIM_PUBLIC_HOST` is the address the phone will use; when it is omitted the server picks the first non-loopback IPv4 address. Set `INTERVIEW_SIM_HOST` to bind one interface instead of all of them. `INTERVIEW_SIM_PORT` changes the port everywhere, including these allow lists.
+
+On the first start with `INTERVIEW_SIM_HTTPS=1`, the server generates a local CA and a server certificate under `interview-sim/.certs/` using OpenSSL (already included with Git for Windows). Later starts reuse those files; delete the directory to regenerate. To use a certificate you already have instead:
+
+```powershell
+$env:INTERVIEW_SIM_TLS_CERT = "C:\certs\interview-sim.pem"
+$env:INTERVIEW_SIM_TLS_KEY = "C:\certs\interview-sim-key.pem"
+```
+
+4. On the phone, open `https://192.168.1.42:4321`. Chrome warns that the connection is not private; choose **Advanced** and continue once.
+5. Open `https://192.168.1.42:4321/interview-sim-ca.crt` and install it as a CA certificate: **Settings > Security > Encryption & credentials > Install a certificate > CA certificate**. Android asks you to confirm and may require a screen lock. If you supplied your own certificate, install your own CA instead.
+6. Reopen `https://192.168.1.42:4321` and confirm the address shows as secure; restart Chrome if the warning remains. Open Chrome's menu and choose **Install app** (or **Add to Home screen**). The app opens in its own standalone window with safe-area insets, the app shell is cached, and it opens offline. `/api` calls still need the server to be running.
+
+The manifest is served as `application/manifest+json`, and the server maps `.webmanifest` to that type. The 192 px and 512 px icons plus the maskable icon live in `interview-sim/public/icons/`.
+
+### Path B: LAN over HTTP (fallback shortcut)
+
+```powershell
+$env:INTERVIEW_SIM_LAN = "1"
+$env:INTERVIEW_SIM_PUBLIC_HOST = "192.168.1.42"
+node interview-sim/server.mjs
+```
+
+Open `http://192.168.1.42:4321`. Chrome only offers **Add to Home screen**, which creates a shortcut that opens this URL in a normal browser tab. There is no service worker, no cached offline shell, and no standalone window, but every scenario, exam, and API call works while the server is running. Use this path only when you cannot install the certificate.
+
+Both LAN paths are opt-in. Without those variables the server keeps the original `127.0.0.1` binding and its existing host and origin allow list.
 
 ## JDK detection
 
@@ -205,6 +249,8 @@ node interview-sim/validate.mjs
 It checks the schema per round type, unique ids, non-empty rubrics and weights, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, the required scenario mix (at least 12 scenarios, 2 debugging and 2 design), that every code starter compiles and fails before completion, that each debugging regression test fails on the broken starter, that every reference solution passes both hidden suites, and that each design criterion's strong answer and reference design, plus each debugging diagnosis's strong answer, clear their evidence thresholds.
 It also checks that the shared quiz bank loads with eight topics and valid questions, that a standard exam selects 20 unique answer-free questions balanced across topics, that a focused selection returns exactly the requested ids, and that exam scoring and the tailored plan follow the documented rules.
 
+It first starts the server on a random port and verifies the installable web app: the manifest's MIME type and fields, the icon PNG sizes, and that the service worker precaches the app shell, leaves `/api` to the network, and serves the cached shell offline.
+
 ## Progress and history
 
 A completed debrief appends one JSON record under `interview-sim/progress/` per session.
@@ -216,7 +262,7 @@ Records stay on this machine.
 
 ## Local-only and sandbox limitations
 
-- The server binds to `127.0.0.1`. It rejects requests with a non-local `Host` header, rejects API requests whose `Origin` header is not the local server, and requires `Content-Type: application/json` on API POSTs. There is no authentication, telemetry, or remote service other than the optional AI provider you configure.
+- By default the server binds to `127.0.0.1`. It rejects requests with a non-local `Host` header, rejects API requests whose `Origin` header is not the local server, and requires `Content-Type: application/json` on API POSTs. LAN mode is opt-in: when `INTERVIEW_SIM_LAN=1` is set, the server binds the configured interface and adds only the chosen LAN host name to the allowed hosts and origins. There is no authentication, telemetry, or remote service other than the optional AI provider you configure. Because LAN mode has no authentication, use it only on a network you trust.
 - Your code is the user's own practice code. It is compiled and run locally in a temporary directory outside the repository, with a per-test timeout and a total timeout, and the directory is deleted afterward. On Windows, the whole process tree is killed on timeout.
 - **This is not a security sandbox.** Java code can read and write local files and use the network. Do not run code you do not trust. The timeouts limit hangs, not malicious behaviour.
 - Hidden tests are not sent to the browser, but test results and failure output are shown so you can debug.
@@ -226,8 +272,8 @@ Records stay on this machine.
 
 ```text
 interview-sim/
-  server.mjs            local HTTP server and API
-  validate.mjs          scenario and reference-solution validator
+  server.mjs            local HTTP and HTTPS server and API
+  validate.mjs          scenario, exam, and installable-app validator
   lib/
     ai.mjs              optional AI calls with scripted fallbacks
     exam.mjs            quiz bank loading, exam selection, scoring, tailored plan
@@ -239,6 +285,10 @@ interview-sim/
     app.js              session flow, timer, chat, scoring
     scoring.mjs         keyword evidence helpers shared by app.js and validate.mjs
     styles.css          local styling, no external assets
+    manifest.webmanifest  installable web app metadata
+    sw.js               app-shell service worker
+    icons/              192 px, 512 px, and maskable PNG icons
   scenarios/            fifteen scenario definitions across three round types
   progress/             gitignored local session records
+  .certs/               gitignored generated HTTPS certificates
 ```

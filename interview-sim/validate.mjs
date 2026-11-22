@@ -1,3 +1,8 @@
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { createContext, runInContext } from 'node:vm';
 import { loadScenarios, roundTypeOf } from './lib/scenarios.mjs';
 import { matchClarifying } from './lib/ai.mjs';
 import {
@@ -529,7 +534,274 @@ function validateExamChecks() {
   );
 }
 
+function pngSize(buffer) {
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (buffer.length < 24 || signature.some((byte, index) => buffer[index] !== byte)) return null;
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
+function messageOf(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function waitForServer(child) {
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const finish = (handler, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      handler(value);
+    };
+    const timer = setTimeout(
+      () => finish(reject, new Error(`server did not start within 15s${stderr ? `: ${stderr.trim()}` : ''}`)),
+      15000,
+    );
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+      if (stdout.includes('Interview simulator:')) finish(resolve);
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    child.on('error', (error) => finish(reject, error));
+    child.on('exit', (code) => finish(reject, new Error(`server exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`)));
+  });
+}
+
+async function startPwaServer() {
+  const serverPath = fileURLToPath(new URL('./server.mjs', import.meta.url));
+  let lastError = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const port = 45000 + Math.floor(Math.random() * 10000);
+    const child = spawn(process.execPath, [serverPath], {
+      env: {
+        ...process.env,
+        INTERVIEW_SIM_PORT: String(port),
+        INTERVIEW_SIM_HOST: '',
+        INTERVIEW_SIM_LAN: '',
+        INTERVIEW_SIM_HTTPS: '',
+        INTERVIEW_SIM_PUBLIC_HOST: '',
+        INTERVIEW_SIM_TLS_CERT: '',
+        INTERVIEW_SIM_TLS_KEY: '',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    try {
+      await waitForServer(child);
+      return { child, baseUrl: `http://127.0.0.1:${port}` };
+    } catch (error) {
+      lastError = error;
+      child.kill();
+    }
+  }
+  throw lastError;
+}
+
+async function exerciseServiceWorker(baseUrl, publicDir) {
+  const source = await readFile(path.join(publicDir, 'sw.js'), 'utf8');
+  const scope = new URL('./', `${baseUrl}/`);
+  const listeners = new Map();
+  const cacheStores = new Map();
+  const precached = [];
+  let offline = false;
+
+  const swFetch = async (input, init) => {
+    if (offline) throw new TypeError('Network unavailable');
+    return fetch(input, init);
+  };
+
+  const cacheFor = (name) => {
+    if (!cacheStores.has(name)) {
+      const entries = new Map();
+      cacheStores.set(name, {
+        async addAll(items) {
+          for (const item of items) {
+            const url = new URL(item, scope).href;
+            const response = await swFetch(url);
+            if (!response || !response.ok) {
+              throw new Error(`precache request failed: ${item} (${response ? response.status : 'no response'})`);
+            }
+            entries.set(url, response);
+            precached.push(item);
+          }
+        },
+        async match(request) {
+          const url = new URL(typeof request === 'string' ? request : request.url, scope).href;
+          return entries.get(url);
+        },
+        async put(request, response) {
+          const url = new URL(typeof request === 'string' ? request : request.url, scope).href;
+          entries.set(url, response);
+        },
+      });
+    }
+    return cacheStores.get(name);
+  };
+
+  const context = createContext({
+    URL,
+    Response,
+    Request,
+    console,
+    fetch: swFetch,
+    caches: {
+      open: async (name) => cacheFor(name),
+      keys: async () => [...cacheStores.keys()],
+      delete: async (name) => cacheStores.delete(name),
+    },
+    self: {
+      location: { origin: scope.origin },
+      addEventListener: (type, handler) => listeners.set(type, handler),
+      skipWaiting: async () => {},
+      clients: { claim: async () => {} },
+    },
+  });
+  runInContext(source, context, { filename: 'sw.js' });
+
+  const dispatch = async (type, event) => {
+    const handler = listeners.get(type);
+    if (!handler) throw new Error(`service worker has no ${type} listener`);
+    const waits = [];
+    let responsePromise = null;
+    let responded = false;
+    await handler({
+      ...event,
+      waitUntil: (promise) => waits.push(promise),
+      respondWith: (promise) => {
+        responded = true;
+        responsePromise = Promise.resolve(promise);
+      },
+    });
+    await Promise.all(waits);
+    return { responded, response: responsePromise ? await responsePromise : undefined };
+  };
+
+  let installError = null;
+  try {
+    await dispatch('install', {});
+  } catch (error) {
+    installError = error;
+  }
+  record(
+    !installError,
+    'service worker install fetches every app-shell file',
+    installError ? messageOf(installError) : `${precached.length} files cached`,
+  );
+
+  const requiredShell = [
+    'index.html',
+    'styles.css',
+    'app.js',
+    'scoring.mjs',
+    'manifest.webmanifest',
+    'icons/icon-192.png',
+    'icons/icon-512.png',
+    'icons/icon-maskable-512.png',
+  ];
+  const cachedPaths = new Set(precached.map((entry) => new URL(entry, scope).pathname.replace(/^\/+/, '')));
+  record(
+    requiredShell.every((entry) => cachedPaths.has(entry)),
+    'service worker precaches the app shell and icons',
+    `cached: ${[...cachedPaths].join(', ') || '(none)'}`,
+  );
+
+  const api = await dispatch('fetch', {
+    request: { method: 'GET', mode: 'cors', url: new URL('api/health', scope).href },
+  });
+  record(!api.responded, 'service worker leaves /api requests to the network');
+
+  offline = true;
+  let navigation;
+  try {
+    navigation = await dispatch('fetch', {
+      request: { method: 'GET', mode: 'navigate', url: new URL('some/deep/link', scope).href },
+    });
+  } finally {
+    offline = false;
+  }
+  record(
+    navigation.responded && Boolean(navigation.response) && navigation.response.status === 200,
+    'service worker serves the cached shell for an offline navigation',
+    navigation.responded ? `status ${navigation.response ? navigation.response.status : 'none'}` : 'no response',
+  );
+}
+
+async function validatePwaChecks() {
+  const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
+  let server;
+  try {
+    server = await startPwaServer();
+  } catch (error) {
+    record(false, 'server starts for the PWA checks', messageOf(error));
+    return;
+  }
+  const manifestUrl = new URL('manifest.webmanifest', `${server.baseUrl}/`);
+  try {
+    const manifestResponse = await fetch(manifestUrl);
+    record(
+      manifestResponse.status === 200,
+      'server serves the web app manifest',
+      `status ${manifestResponse.status}`,
+    );
+    const manifestType = String(manifestResponse.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    record(
+      manifestType === 'application/manifest+json',
+      'server serves the manifest with the web app manifest MIME type',
+      `got ${manifestType || '(none)'}`,
+    );
+
+    let manifest;
+    try {
+      manifest = JSON.parse(await manifestResponse.text());
+    } catch (error) {
+      record(false, 'web app manifest loads', messageOf(error));
+      return;
+    }
+
+    record(isString(manifest.name) && isString(manifest.short_name), 'manifest has a name and short name');
+    record(manifest.display === 'standalone', 'manifest uses standalone display', `got ${manifest.display}`);
+    record(isString(manifest.start_url) && isString(manifest.scope), 'manifest declares a start_url and scope');
+    record(/^#[0-9a-f]{6}$/i.test(manifest.theme_color || ''), 'manifest has a theme color');
+    record(/^#[0-9a-f]{6}$/i.test(manifest.background_color || ''), 'manifest has a background color');
+
+    const icons = Array.isArray(manifest.icons) ? manifest.icons : [];
+    const iconFor = (size, purpose) => icons.find((icon) =>
+      icon.sizes === size &&
+      icon.type === 'image/png' &&
+      (!purpose || String(icon.purpose || 'any').split(/\s+/).includes(purpose)));
+    const sizes = [['192x192', 'any'], ['512x512', 'any'], ['512x512', 'maskable']];
+    for (const [size, purpose] of sizes) {
+      const icon = iconFor(size, purpose);
+      record(Boolean(icon), `manifest has a ${size} ${purpose} icon`, `icons: ${icons.map((item) => `${item.sizes}:${item.purpose || 'any'}`).join(', ')}`);
+      if (!icon || !isString(icon.src)) continue;
+      const iconResponse = await fetch(new URL(icon.src, manifestUrl));
+      if (!iconResponse.ok) {
+        record(false, `manifest icon is served: ${icon.src}`, `status ${iconResponse.status}`);
+        continue;
+      }
+      const actual = pngSize(Buffer.from(await iconResponse.arrayBuffer()));
+      record(
+        Boolean(actual) && `${actual.width}x${actual.height}` === size,
+        `manifest icon is a ${size} PNG: ${icon.src}`,
+        actual ? `got ${actual.width}x${actual.height}` : 'not a PNG',
+      );
+    }
+
+    try {
+      await exerciseServiceWorker(server.baseUrl, publicDir);
+    } catch (error) {
+      record(false, 'service worker runs', messageOf(error));
+    }
+  } finally {
+    server.child.kill();
+  }
+}
+
 async function main() {
+  await validatePwaChecks();
   const jdk = detectJdk({ refresh: true });
   if (!jdk.available) {
     process.stderr.write(`${jdk.installSteps.join('\n')}\n`);

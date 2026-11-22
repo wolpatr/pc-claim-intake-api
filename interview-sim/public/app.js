@@ -2313,7 +2313,13 @@ function bindEvents() {
   });
 }
 
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
 async function init() {
+  registerServiceWorker();
   bindEvents();
   voice.autoSpeak = readStoredAutoSpeak();
   updateVoiceUI();

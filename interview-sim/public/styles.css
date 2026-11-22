@@ -1961,3 +1961,122 @@ details.reference pre {
     gap: 2px;
   }
 }
+
+html,
+body {
+  overflow-x: hidden;
+}
+
+.topbar {
+  padding-top: max(14px, env(safe-area-inset-top));
+  padding-right: max(28px, env(safe-area-inset-right));
+  padding-left: max(28px, env(safe-area-inset-left));
+}
+
+main {
+  padding-right: max(28px, env(safe-area-inset-right));
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+  padding-left: max(28px, env(safe-area-inset-left));
+}
+
+.toast {
+  right: max(22px, env(safe-area-inset-right));
+  bottom: max(22px, env(safe-area-inset-bottom));
+  max-width: calc(100vw - 44px);
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    gap: 10px;
+    flex-wrap: wrap;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: 12px;
+    padding-left: max(14px, env(safe-area-inset-left));
+  }
+
+  .topbar-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  main {
+    padding-top: 14px;
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    padding-left: max(14px, env(safe-area-inset-left));
+  }
+
+  .session-grid,
+  .hero,
+  .briefing-grid,
+  .debrief-grid,
+  .scenario-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace,
+  .interviewer-panel,
+  .panel,
+  .debrief-card,
+  .exam-question-card {
+    min-width: 0;
+  }
+
+  .modal {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+
+  button.primary,
+  button.ghost,
+  button.icon-button,
+  .icon-button,
+  .message-speak,
+  .brief-speak,
+  .phase-steps button,
+  .timer-controls button,
+  .clarify-form button,
+  .interview-actions button,
+  .editor-actions button,
+  .exam-nav button {
+    min-height: 44px;
+  }
+
+  .clarify-form input,
+  .diagnosis-input,
+  .exam-entry-actions input,
+  .phase-time-fields input {
+    min-height: 44px;
+  }
+
+  .rubric-table,
+  .history-table,
+  .exam-topic-table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .scenario-card {
+    padding: 16px;
+  }
+
+  .debrief-actions {
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+
+  .debrief-actions button {
+    flex: 1 1 160px;
+  }
+
+  .exam-nav button {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+
+  .exam-miss-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

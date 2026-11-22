@@ -1,6 +1,11 @@
 import http from 'node:http';
+import https from 'node:https';
+import os from 'node:os';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { writeFileSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { compileOnly, detectJdk, hasJavaTypeDeclaration, javaFileNameFor, runSubmission } from './lib/java.mjs';
 import { getScenario, loadScenarios, publicScenario, roundTypeOf, scenarioSummary } from './lib/scenarios.mjs';
@@ -16,9 +21,35 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(here, 'public');
-const HOST = '127.0.0.1';
+const DEFAULT_HOST = '127.0.0.1';
 const PORT = Number(process.env.INTERVIEW_SIM_PORT || 4321);
 const MAX_BODY = 3 * 1024 * 1024;
+
+const truthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+const LAN_ENABLED = truthy(process.env.INTERVIEW_SIM_LAN);
+const HTTPS_ENABLED = truthy(process.env.INTERVIEW_SIM_HTTPS);
+const HOST = process.env.INTERVIEW_SIM_HOST || (LAN_ENABLED ? '0.0.0.0' : DEFAULT_HOST);
+const SCHEME = HTTPS_ENABLED ? 'https' : 'http';
+
+function detectLanAddress() {
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries || []) {
+      if (entry.family === 'IPv4' && !entry.internal) return entry.address;
+    }
+  }
+  return '';
+}
+
+const LAN_HOST = String(process.env.INTERVIEW_SIM_PUBLIC_HOST || '').trim() || (LAN_ENABLED ? detectLanAddress() : '');
+if (LAN_ENABLED && !LAN_HOST) {
+  process.stderr.write('LAN mode needs a reachable address. Set INTERVIEW_SIM_PUBLIC_HOST to this computer\'s Wi-Fi IPv4 address.\n');
+  process.exit(1);
+}
+
+const LOCAL_HOST = HOST === '0.0.0.0' ? DEFAULT_HOST : HOST;
+const formatHost = (host) => (isIP(host) === 6 ? `[${host}]` : host);
+const URL_HOST = formatHost(LAN_ENABLED ? LAN_HOST : LOCAL_HOST);
+const BASE_URL = `${SCHEME}://${URL_HOST}:${PORT}`;
 
 const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
 const ALLOWED_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
@@ -27,6 +58,18 @@ if (PORT === 80) {
   ALLOWED_HOSTS.add('localhost');
   ALLOWED_ORIGINS.add('http://127.0.0.1');
   ALLOWED_ORIGINS.add('http://localhost');
+}
+if (HTTPS_ENABLED) {
+  ALLOWED_ORIGINS.add(`https://127.0.0.1:${PORT}`);
+  ALLOWED_ORIGINS.add(`https://localhost:${PORT}`);
+  if (PORT === 80) {
+    ALLOWED_ORIGINS.add('https://127.0.0.1');
+    ALLOWED_ORIGINS.add('https://localhost');
+  }
+}
+if (LAN_ENABLED) {
+  ALLOWED_HOSTS.add(`${URL_HOST}:${PORT}`.toLowerCase());
+  ALLOWED_ORIGINS.add(`${SCHEME}://${URL_HOST}:${PORT}`.toLowerCase());
 }
 
 function isAllowedHost(hostHeader) {
@@ -48,10 +91,118 @@ const MIME = {
   '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
 };
+
+async function readTlsPair(certPath, keyPath) {
+  const [cert, key] = await Promise.all([readFile(certPath), readFile(keyPath)]);
+  return { cert, key };
+}
+
+function generateSelfSignedCertificate(certDir, hostName) {
+  const caKeyPath = path.join(certDir, 'ca-key.pem');
+  const caPath = path.join(certDir, 'ca.pem');
+  const keyPath = path.join(certDir, 'key.pem');
+  const certPath = path.join(certDir, 'cert.pem');
+  const csrPath = path.join(certDir, 'server.csr');
+  const extPath = path.join(certDir, 'server.ext');
+  const san = new Set(['DNS:localhost', 'IP:127.0.0.1']);
+  if (isIP(hostName)) san.add(`IP:${hostName}`);
+  else san.add(`DNS:${hostName}`);
+  const ext = [
+    'basicConstraints=critical,CA:FALSE',
+    'keyUsage=critical,digitalSignature,keyEncipherment',
+    'extendedKeyUsage=serverAuth',
+    `subjectAltName=${[...san].join(',')}`,
+    '',
+  ].join('\n');
+  writeFileSync(extPath, ext);
+  try {
+    execFileSync('openssl', [
+      'req', '-x509', '-newkey', 'rsa:2048', '-sha256', '-nodes', '-days', '3650',
+      '-keyout', caKeyPath, '-out', caPath,
+      '-subj', '/CN=Interview Sim Local CA',
+      '-addext', 'basicConstraints=critical,CA:TRUE,pathlen:0',
+      '-addext', 'keyUsage=critical,keyCertSign,cRLSign',
+    ], { stdio: 'pipe', windowsHide: true });
+    execFileSync('openssl', [
+      'req', '-newkey', 'rsa:2048', '-sha256', '-nodes',
+      '-keyout', keyPath, '-out', csrPath,
+      '-subj', `/CN=${hostName}`,
+    ], { stdio: 'pipe', windowsHide: true });
+    execFileSync('openssl', [
+      'x509', '-req', '-in', csrPath, '-CA', caPath, '-CAkey', caKeyPath,
+      '-CAcreateserial', '-out', certPath, '-days', '825', '-sha256', '-extfile', extPath,
+    ], { stdio: 'pipe', windowsHide: true });
+  } catch (error) {
+    const detail = error && error.code === 'ENOENT'
+      ? 'OpenSSL was not found on PATH.'
+      : String(error && error.stderr ? error.stderr : error && error.message ? error.message : error).trim();
+    throw new Error(`${detail} Install OpenSSL, or set INTERVIEW_SIM_TLS_CERT and INTERVIEW_SIM_TLS_KEY to an existing certificate and key.`);
+  }
+  return { caPath, keyPath, certPath };
+}
+
+async function ensureTls() {
+  const configuredCert = String(process.env.INTERVIEW_SIM_TLS_CERT || '').trim();
+  const configuredKey = String(process.env.INTERVIEW_SIM_TLS_KEY || '').trim();
+  if (configuredCert || configuredKey) {
+    if (!configuredCert || !configuredKey) {
+      throw new Error('Set both INTERVIEW_SIM_TLS_CERT and INTERVIEW_SIM_TLS_KEY, or neither to generate a self-signed pair.');
+    }
+    const pair = await readTlsPair(configuredCert, configuredKey);
+    return { ...pair, certPath: configuredCert, keyPath: configuredKey, ca: null, caPath: null, generated: false };
+  }
+
+  const certDir = path.join(here, '.certs');
+  const certPath = path.join(certDir, 'cert.pem');
+  const keyPath = path.join(certDir, 'key.pem');
+  const caPath = path.join(certDir, 'ca.pem');
+  const hostMarkerPath = path.join(certDir, 'host.txt');
+  const hostName = LAN_HOST || 'localhost';
+
+  let marker = '';
+  try {
+    marker = (await readFile(hostMarkerPath, 'utf8')).trim();
+  } catch {
+    marker = '';
+  }
+
+  if (marker === hostName) {
+    try {
+      const pair = await readTlsPair(certPath, keyPath);
+      const ca = await readFile(caPath);
+      return { ...pair, ca, certPath, keyPath, caPath, generated: true };
+    } catch {
+      marker = '';
+    }
+  }
+
+  await mkdir(certDir, { recursive: true });
+  const generated = generateSelfSignedCertificate(certDir, hostName);
+  await writeFile(hostMarkerPath, `${hostName}\n`);
+  const pair = await readTlsPair(generated.certPath, generated.keyPath);
+  const ca = await readFile(generated.caPath);
+  await Promise.all([
+    unlink(path.join(certDir, 'server.csr')).catch(() => {}),
+    unlink(path.join(certDir, 'server.ext')).catch(() => {}),
+    unlink(path.join(certDir, 'ca.srl')).catch(() => {}),
+  ]);
+  return { ...pair, ca, certPath: generated.certPath, keyPath: generated.keyPath, caPath: generated.caPath, generated: true };
+}
+
+let tls = null;
+if (HTTPS_ENABLED) {
+  try {
+    tls = await ensureTls();
+  } catch (error) {
+    process.stderr.write(`HTTPS mode could not start: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.exit(1);
+  }
+}
 
 function sendJson(response, status, payload) {
   const body = JSON.stringify(payload);
@@ -342,13 +493,23 @@ async function handleApi(request, response, url) {
   return false;
 }
 
-const server = http.createServer(async (request, response) => {
+const requestHandler = async (request, response) => {
   if (!isAllowedHost(request.headers.host)) {
     sendJson(response, 403, { error: 'Forbidden host.' });
     return;
   }
-  const url = new URL(request.url || '/', `http://${HOST}:${PORT}`);
+  const url = new URL(request.url || '/', BASE_URL);
   try {
+    if (HTTPS_ENABLED && tls && tls.ca && request.method === 'GET' && url.pathname === '/interview-sim-ca.crt') {
+      response.writeHead(200, {
+        'Content-Type': 'application/x-x509-ca-cert',
+        'Content-Length': tls.ca.length,
+        'Content-Disposition': 'attachment; filename="interview-sim-ca.crt"',
+        'Cache-Control': 'no-store',
+      });
+      response.end(tls.ca);
+      return;
+    }
     if (url.pathname.startsWith('/api/')) {
       if (!isAllowedOrigin(request.headers.origin)) {
         sendJson(response, 403, { error: 'Forbidden origin.' });
@@ -375,14 +536,28 @@ const server = http.createServer(async (request, response) => {
       response.end();
     }
   }
-});
+};
+
+const server = HTTPS_ENABLED
+  ? https.createServer({ key: tls.key, cert: tls.cert }, requestHandler)
+  : http.createServer(requestHandler);
 
 const jdk = detectJdk();
 const ai = aiStatus();
 
 server.listen(PORT, HOST, () => {
   loadScenarios();
-  process.stdout.write(`Interview simulator: http://${HOST}:${PORT}\n`);
+  process.stdout.write(`Interview simulator: ${BASE_URL}\n`);
+  if (LAN_ENABLED) {
+    process.stdout.write(`LAN mode: enabled (bound to ${HOST})\n`);
+    if (HTTPS_ENABLED && tls && tls.generated) {
+      process.stdout.write(`Self-signed CA: ${tls.caPath}\n`);
+      process.stdout.write(`Install it on the phone from ${BASE_URL}/interview-sim-ca.crt\n`);
+    }
+  } else if (HTTPS_ENABLED) {
+    process.stdout.write(`HTTPS mode: enabled (bound to ${HOST})\n`);
+    if (tls && tls.generated) process.stdout.write(`Self-signed CA: ${tls.caPath}\n`);
+  }
   process.stdout.write(`JDK: ${jdk.available ? `${jdk.version} (${jdk.source})` : 'not found'}\n`);
   process.stdout.write(`Interviewer: ${ai.configured ? `hybrid AI (${ai.model})` : 'scripted only'}\n`);
   process.stdout.write('Press Ctrl+C to stop.\n');

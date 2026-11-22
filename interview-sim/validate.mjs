@@ -1,3 +1,6 @@
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { loadScenarios, roundTypeOf } from './lib/scenarios.mjs';
 import { matchClarifying } from './lib/ai.mjs';
 import {
@@ -529,7 +532,91 @@ function validateExamChecks() {
   );
 }
 
+function pngSize(buffer) {
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (buffer.length < 24 || signature.some((byte, index) => buffer[index] !== byte)) return null;
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
+async function validatePwaChecks() {
+  const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(path.join(publicDir, 'manifest.webmanifest'), 'utf8'));
+  } catch (error) {
+    record(false, 'web app manifest loads', error instanceof Error ? error.message : String(error));
+    return;
+  }
+
+  record(isString(manifest.name) && isString(manifest.short_name), 'manifest has a name and short name');
+  record(manifest.display === 'standalone', 'manifest uses standalone display', `got ${manifest.display}`);
+  record(isString(manifest.start_url) && isString(manifest.scope), 'manifest declares a start_url and scope');
+  record(/^#[0-9a-f]{6}$/i.test(manifest.theme_color || ''), 'manifest has a theme color');
+  record(/^#[0-9a-f]{6}$/i.test(manifest.background_color || ''), 'manifest has a background color');
+
+  const icons = Array.isArray(manifest.icons) ? manifest.icons : [];
+  const iconFor = (size, purpose) => icons.find((icon) =>
+    icon.sizes === size &&
+    icon.type === 'image/png' &&
+    (!purpose || String(icon.purpose || 'any').split(/\s+/).includes(purpose)));
+  const sizes = [['192x192', 'any'], ['512x512', 'any'], ['512x512', 'maskable']];
+  for (const [size, purpose] of sizes) {
+    const icon = iconFor(size, purpose);
+    record(Boolean(icon), `manifest has a ${size} ${purpose} icon`, `icons: ${icons.map((item) => `${item.sizes}:${item.purpose || 'any'}`).join(', ')}`);
+    if (!icon || !isString(icon.src)) continue;
+    try {
+      const buffer = await readFile(path.join(publicDir, icon.src));
+      const actual = pngSize(buffer);
+      record(
+        Boolean(actual) && `${actual.width}x${actual.height}` === size,
+        `manifest icon is a ${size} PNG: ${icon.src}`,
+        actual ? `got ${actual.width}x${actual.height}` : 'not a PNG',
+      );
+    } catch {
+      record(false, `manifest icon exists: ${icon.src}`, 'file not found');
+    }
+  }
+
+  const indexHtml = await readFile(path.join(publicDir, 'index.html'), 'utf8');
+  record(/<link[^>]+rel="manifest"[^>]+href="manifest\.webmanifest"/.test(indexHtml), 'index links the web app manifest');
+  record(/<meta[^>]+name="theme-color"/.test(indexHtml), 'index declares a theme color');
+  record(/viewport-fit=cover/.test(indexHtml), 'viewport opts into safe-area insets');
+
+  const appJs = await readFile(path.join(publicDir, 'app.js'), 'utf8');
+  record(
+    /'serviceWorker' in navigator/.test(appJs) && /window\.isSecureContext/.test(appJs) && /register\(['"]\.\/sw\.js['"]\)/.test(appJs),
+    'service worker registers only in a secure context',
+  );
+
+  const sw = await readFile(path.join(publicDir, 'sw.js'), 'utf8');
+  const shellMatch = sw.match(/const SHELL = \[([\s\S]*?)\];/);
+  const shellEntries = shellMatch ? [...shellMatch[1].matchAll(/'([^']+)'/g)].map((match) => match[1]) : [];
+  const shellRequired = ['./index.html', './styles.css', './app.js', './scoring.mjs', './manifest.webmanifest'];
+  record(
+    shellRequired.every((entry) => shellEntries.includes(entry)),
+    'service worker precaches the app shell',
+    `cached: ${shellEntries.join(', ')}`,
+  );
+  record(
+    ['./icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'].every((entry) => shellEntries.includes(entry)),
+    'service worker precaches the manifest icons',
+  );
+  record(/url\.pathname\.startsWith\(['"]\/api\/['"]\)/.test(sw), 'service worker leaves /api requests to the network');
+  record(/request\.mode === ['"]navigate['"]/.test(sw), 'service worker serves an offline navigation fallback');
+
+  const server = await readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), 'server.mjs'), 'utf8');
+  record(/['"]\.webmanifest['"]\s*:\s*['"]application\/manifest\+json['"]/.test(server), 'server serves the manifest with the web app manifest MIME type');
+  record(
+    /DEFAULT_HOST = ['"]127\.0\.0\.1['"]/.test(server) &&
+      /INTERVIEW_SIM_LAN/.test(server) &&
+      /INTERVIEW_SIM_HTTPS/.test(server) &&
+      /INTERVIEW_SIM_PUBLIC_HOST/.test(server),
+    'server keeps the loopback default and offers opt-in LAN and HTTPS modes',
+  );
+}
+
 async function main() {
+  await validatePwaChecks();
   const jdk = detectJdk({ refresh: true });
   if (!jdk.available) {
     process.stderr.write(`${jdk.installSteps.join('\n')}\n`);

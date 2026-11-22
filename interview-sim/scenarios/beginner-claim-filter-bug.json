@@ -109,8 +109,8 @@
     },
     {
       "name": "input order is preserved",
-      "className": "FilterOrderTest",
-      "code": "import java.util.List;\n\npublic class FilterOrderTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C2\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C3\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C4\", \"OPEN\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(2, open.size(), \"open claim count\");\n        TestSupport.eq(\"C2\", open.get(0).id(), \"first open claim in input order\");\n        TestSupport.eq(\"C4\", open.get(1).id(), \"second open claim in input order\");\n        System.out.println(\"PASS: input order is preserved\");\n    }\n}\n"
+        "className": "FilterOrderTest",
+        "code": "import java.util.List;\n\npublic class FilterOrderTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C2\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C3\", \"PENDING\"),\n                new ClaimFilter.Claim(\"C4\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C5\", \"OPEN\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(2, open.size(), \"open claim count\");\n        TestSupport.eq(\"C2\", open.get(0).id(), \"first open claim in input order\");\n        TestSupport.eq(\"C5\", open.get(1).id(), \"second open claim in input order\");\n        System.out.println(\"PASS: input order is preserved\");\n    }\n}\n"
     },
     {
       "name": "an empty list returns an empty list",
@@ -130,9 +130,9 @@
         "code": "import java.util.List;\n\npublic class ReopenedIncludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C2\", \"REOPENED\"),\n                new ClaimFilter.Claim(\"C3\", \"CLOSED\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(2, open.size(), \"open plus reopened count\");\n        TestSupport.eq(\"C1\", open.get(0).id(), \"open claim\");\n        TestSupport.eq(\"C2\", open.get(1).id(), \"reopened claim\");\n        System.out.println(\"PASS: reopened claims join the open queue\");\n    }\n}\n"
       },
       {
-        "name": "closed claims stay out of the queue",
+        "name": "closed and other statuses stay out of the queue",
         "className": "ClosedStillExcludedTest",
-        "code": "import java.util.List;\n\npublic class ClosedStillExcludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C2\", \"REOPENED\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(1, open.size(), \"only reopened is included\");\n        TestSupport.eq(\"C2\", open.get(0).id(), \"reopened claim\");\n        System.out.println(\"PASS: closed claims stay out of the queue\");\n    }\n}\n"
+        "code": "import java.util.List;\n\npublic class ClosedStillExcludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C2\", \"REOPENED\"),\n                new ClaimFilter.Claim(\"C3\", \"PENDING\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(1, open.size(), \"only reopened is included\");\n        TestSupport.eq(\"C2\", open.get(0).id(), \"reopened claim\");\n        System.out.println(\"PASS: closed and other statuses stay out of the queue\");\n    }\n}\n"
       },
       {
         "name": "open-only input still works after the change",

@@ -130,7 +130,7 @@
       {
         "name": "length is measured after trimming",
         "className": "PaddedLongNameTest",
-        "code": "public class PaddedLongNameTest {\n    public static void main(String[] args) {\n        TestSupport.eq(\"Claimant name must be at most 80 characters.\",\n                new ClaimNameValidator().validateName(\"  \" + \"c\".repeat(81) + \"  \"),\n                \"padded 81 characters\");\n        System.out.println(\"PASS: length is measured after trimming\");\n    }\n}\n"
+        "code": "public class PaddedLongNameTest {\n    public static void main(String[] args) {\n        var validator = new ClaimNameValidator();\n        TestSupport.eq(null, validator.validateName(\"  \" + \"c\".repeat(80) + \"  \"),\n                \"padded 80 characters\");\n        TestSupport.eq(\"Claimant name must be at most 80 characters.\",\n                validator.validateName(\"  \" + \"c\".repeat(81) + \"  \"),\n                \"padded 81 characters\");\n        System.out.println(\"PASS: length is measured after trimming\");\n    }\n}\n"
       }
     ]
   },

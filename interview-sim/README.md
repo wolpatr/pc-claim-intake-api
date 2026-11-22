@@ -200,6 +200,7 @@ node interview-sim/validate.mjs
 ```
 
 It checks the schema per round type, unique ids, non-empty rubrics and weights, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, the required scenario mix (at least 12 scenarios, 2 debugging and 2 design), that every code starter compiles and fails before completion, that each debugging regression test fails on the broken starter, that every reference solution passes both hidden suites, and that each design criterion's strong answer and reference design, plus each debugging diagnosis's strong answer, clear their evidence thresholds.
+It also checks that the shared quiz bank loads with eight topics and valid questions, that a standard exam selects 20 unique answer-free questions balanced across topics, that a focused selection returns exactly the requested ids, and that exam scoring and the tailored plan follow the documented rules.
 
 ## Progress and history
 
@@ -207,7 +208,7 @@ A completed debrief appends one JSON record under `interview-sim/progress/` per 
 A submitted exam appends its own record there with `kind: "exam"`, the score, topic breakdown, missed question ids, and the tailored plan.
 That directory is gitignored; only `.gitkeep` is tracked.
 Each scenario record carries the round type, rubric evidence, test results, and sketch compile result where relevant.
-The `History` button shows completed sessions and exam attempts, per-topic averages, the weakest topics, and the latest tailored plan, with a button to start that plan's focused retake.
+The `History` button shows completed sessions and exam attempts, scenario-session per-topic averages and weakest topics, and the latest tailored plan, with a button to start that plan's focused retake.
 Records stay on this machine.
 
 ## Local-only and sandbox limitations

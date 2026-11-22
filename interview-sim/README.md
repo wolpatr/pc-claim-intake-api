@@ -125,10 +125,13 @@ The AI key stays server-only and never reaches the browser.
 
 ## Scenarios
 
-Twelve scenarios ship under `interview-sim/scenarios/`, across Associate, Intermediate, Senior, and Consultant difficulty:
+Fifteen scenarios ship under `interview-sim/scenarios/`, across Beginner, Associate, Intermediate, Senior, and Consultant difficulty:
 
 | Scenario | Type | Area | Base round | Follow-up |
 | --- | --- | --- | --- | --- |
+| `beginner-claim-newest` | coding | Claim domain | Return the claim with the latest incident date | Break date ties by claim id |
+| `beginner-claim-name-check` | coding | Claim domain | Validate one claimant name field | Reject names longer than 80 characters |
+| `beginner-claim-filter-bug` | debugging | Claim domain | Fix an inverted claim status filter | Include reopened claims |
 | `claim-status-transition` | coding | Claim domain | Status transition method with an enum | Audit-note overload and reopening rule |
 | `claim-validation` | coding | Claim domain | Ordered validation messages | Field-keyed map API for a form |
 | `claim-query-filter` | coding | Claim domain | Fix a broken filter and sort | Search summary counts and totals |
@@ -236,6 +239,6 @@ interview-sim/
     app.js              session flow, timer, chat, scoring
     scoring.mjs         keyword evidence helpers shared by app.js and validate.mjs
     styles.css          local styling, no external assets
-  scenarios/            twelve scenario definitions across three round types
+  scenarios/            fifteen scenario definitions across three round types
   progress/             gitignored local session records
 ```

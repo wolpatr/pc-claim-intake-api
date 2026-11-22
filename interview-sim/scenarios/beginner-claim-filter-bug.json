@@ -1,0 +1,208 @@
+{
+  "id": "beginner-claim-filter-bug",
+  "title": "Fix a claim status filter",
+  "tagline": "The open-claims filter returns the wrong rows. Reproduce the bug, explain the comparison, and fix it.",
+  "difficulty": "Beginner",
+  "roundType": "debugging",
+  "topics": [
+    "Claim domain",
+    "Debugging",
+    "Loops",
+    "Java"
+  ],
+  "phaseTimes": {
+    "brief": 4,
+    "implement": 8,
+    "test": 5,
+    "change": 4,
+    "debrief": 3
+  },
+  "intro": "Thanks for making the time. This round is a bug fix in a small Java filter. The open-claims queue is returning closed claims. You have the broken class and a failing test. Explain the root cause before changing the comparison.",
+  "reproductionNote": "Support ticket FILTER-12: \"The open-claims screen shows closed claims and hides open ones. Repro: filter [C1 OPEN, C2 CLOSED, C3 OPEN]; the result contains C2 instead of C1 and C3.\" Run OpenClaimsFilterTest in the hidden suite.",
+  "diagnosis": {
+    "prompt": "Explain the root cause in your own words: why does the filter return the wrong status, and what comparison should it use?",
+    "keywords": [
+      "inverted",
+      "negation",
+      "comparison",
+      "equals",
+      "open",
+      "status",
+      "condition",
+      "not equal"
+    ],
+    "strongAnswer": "The condition is inverted: !claim.status().equals(\"OPEN\") keeps every non-open claim and drops open ones, so the comparison is wrong. Remove the negation and keep only claims whose status equals OPEN."
+  },
+  "clarifyingQuestions": [
+    {
+      "id": "ticket",
+      "topic": "Reproduction",
+      "question": "What does the support ticket say is wrong?",
+      "keywords": [
+        "ticket",
+        "reproduce",
+        "closed",
+        "open",
+        "wrong"
+      ],
+      "answer": "The ticket says closed claims appear and open claims disappear. Reproduce it with a mixed list before editing.",
+      "coach": "Ask for the reported behaviour and reproduce it first."
+    },
+    {
+      "id": "scope",
+      "topic": "Fix scope",
+      "question": "Should I rewrite the whole filter or change one line?",
+      "keywords": [
+        "one line",
+        "comparison",
+        "rewrite",
+        "scope",
+        "fix"
+      ],
+      "answer": "Change only the status comparison. Keep the loop, the return type, and the method signature.",
+      "coach": "Ask how wide the fix should be before editing."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "What follow-up change is coming?",
+      "keywords": [
+        "change",
+        "reopened",
+        "status",
+        "include",
+        "follow-up"
+      ],
+      "answer": "The follow-up adds REOPENED claims to the same open queue, so keep the comparison easy to extend.",
+      "coach": "Ask about the follow-up so the fix leaves room for it."
+    }
+  ],
+  "clarifyingFallback": "Assume the filter is a pure in-memory method, the input list is non-null, and order must be preserved. Reproduce the failure before editing.",
+  "problemStatement": "### Context\n\nClaimFilter builds the open-claims queue for the intake dashboard. A support ticket says closed claims appear in the queue and open claims are missing.\n\n### Your task\n\nRead the broken class, reproduce the failure, identify the root cause, and fix the filter.\n\n### Rules\n\n- openOnly returns only claims whose status is exactly \"OPEN\".\n- Keep the order of the input list.\n- Do not modify the input list.\n- Empty input returns an empty list.\n- Change only the comparison; keep the method signature and the loop shape.\n\n### Reproduction\n\nThe ticket and the failing test are above the editor. Explain the root cause before editing.",
+  "fileName": "ClaimFilter.java",
+  "starterCode": "import java.util.ArrayList;\nimport java.util.List;\n\npublic final class ClaimFilter {\n\n    public record Claim(String id, String status) {\n    }\n\n    public List<Claim> openOnly(List<Claim> claims) {\n        List<Claim> open = new ArrayList<>();\n        for (Claim claim : claims) {\n            if (!claim.status().equals(\"OPEN\")) {\n                open.add(claim);\n            }\n        }\n        return open;\n    }\n}\n",
+  "examples": [
+    {
+      "input": "[C1 OPEN, C2 CLOSED, C3 OPEN]",
+      "output": "[C1, C3]"
+    },
+    {
+      "input": "[C1 CLOSED]",
+      "output": "[]"
+    },
+    {
+      "input": "[]",
+      "output": "[]"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "open claims filter keeps only OPEN",
+      "className": "OpenClaimsFilterTest",
+      "regression": true,
+      "code": "import java.util.List;\n\npublic class OpenClaimsFilterTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C2\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C3\", \"OPEN\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(2, open.size(), \"open claim count\");\n        TestSupport.eq(\"C1\", open.get(0).id(), \"first open claim\");\n        TestSupport.eq(\"C3\", open.get(1).id(), \"second open claim\");\n        System.out.println(\"PASS: open claims filter keeps only OPEN\");\n    }\n}\n"
+    },
+    {
+      "name": "all closed claims return an empty list",
+      "className": "AllClosedFilterTest",
+      "code": "import java.util.List;\n\npublic class AllClosedFilterTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C2\", \"CLOSED\"));\n        TestSupport.eq(0, new ClaimFilter().openOnly(claims).size(), \"no open claims\");\n        System.out.println(\"PASS: all closed claims return an empty list\");\n    }\n}\n"
+    },
+    {
+      "name": "input order is preserved",
+      "className": "FilterOrderTest",
+      "code": "import java.util.List;\n\npublic class FilterOrderTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C2\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C3\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C4\", \"OPEN\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(2, open.size(), \"open claim count\");\n        TestSupport.eq(\"C2\", open.get(0).id(), \"first open claim in input order\");\n        TestSupport.eq(\"C4\", open.get(1).id(), \"second open claim in input order\");\n        System.out.println(\"PASS: input order is preserved\");\n    }\n}\n"
+    },
+    {
+      "name": "an empty list returns an empty list",
+      "className": "EmptyFilterInputTest",
+      "code": "import java.util.List;\n\npublic class EmptyFilterInputTest {\n    public static void main(String[] args) {\n        TestSupport.eq(0, new ClaimFilter().openOnly(List.of()).size(), \"empty input\");\n        System.out.println(\"PASS: an empty list returns an empty list\");\n    }\n}\n"
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Include reopened claims in the open queue.",
+    "statement": "### Change request\n\nReopened claims should appear in the same queue.\n\n- openOnly returns claims whose status is exactly \"OPEN\" or exactly \"REOPENED\".\n- Preserve input order, leave the input list unchanged, and return an empty list for empty input.\n- CLOSED and any other status stay out.",
+    "starterCode": "import java.util.ArrayList;\nimport java.util.List;\n\npublic final class ClaimFilter {\n\n    public record Claim(String id, String status) {\n    }\n\n    public List<Claim> openOnly(List<Claim> claims) {\n        List<Claim> open = new ArrayList<>();\n        for (Claim claim : claims) {\n            // TODO: OPEN and REOPENED claims belong in the open queue.\n            if (claim.status().equals(\"OPEN\")) {\n                open.add(claim);\n            }\n        }\n        return open;\n    }\n}\n",
+    "fileName": "ClaimFilter.java",
+    "hiddenTests": [
+      {
+        "name": "reopened claims join the open queue",
+        "className": "ReopenedIncludedTest",
+        "code": "import java.util.List;\n\npublic class ReopenedIncludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C2\", \"REOPENED\"),\n                new ClaimFilter.Claim(\"C3\", \"CLOSED\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(2, open.size(), \"open plus reopened count\");\n        TestSupport.eq(\"C1\", open.get(0).id(), \"open claim\");\n        TestSupport.eq(\"C2\", open.get(1).id(), \"reopened claim\");\n        System.out.println(\"PASS: reopened claims join the open queue\");\n    }\n}\n"
+      },
+      {
+        "name": "closed claims stay out of the queue",
+        "className": "ClosedStillExcludedTest",
+        "code": "import java.util.List;\n\npublic class ClosedStillExcludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimFilter.Claim(\"C2\", \"REOPENED\"));\n        var open = new ClaimFilter().openOnly(claims);\n        TestSupport.eq(1, open.size(), \"only reopened is included\");\n        TestSupport.eq(\"C2\", open.get(0).id(), \"reopened claim\");\n        System.out.println(\"PASS: closed claims stay out of the queue\");\n    }\n}\n"
+      },
+      {
+        "name": "open-only input still works after the change",
+        "className": "OpenOnlyAfterChangeTest",
+        "code": "import java.util.List;\n\npublic class OpenOnlyAfterChangeTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimFilter.Claim(\"C1\", \"OPEN\"),\n                new ClaimFilter.Claim(\"C2\", \"OPEN\"));\n        TestSupport.eq(2, new ClaimFilter().openOnly(claims).size(), \"open claims still included\");\n        System.out.println(\"PASS: open-only input still works after the change\");\n    }\n}\n"
+      }
+    ]
+  },
+  "referenceSolution": "import java.util.ArrayList;\nimport java.util.List;\n\npublic final class ClaimFilter {\n\n    public record Claim(String id, String status) {\n    }\n\n    public List<Claim> openOnly(List<Claim> claims) {\n        List<Claim> open = new ArrayList<>();\n        for (Claim claim : claims) {\n            if (claim.status().equals(\"OPEN\") || claim.status().equals(\"REOPENED\")) {\n                open.add(claim);\n            }\n        }\n        return open;\n    }\n}\n",
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 3,
+      "phase": "implement",
+      "text": "Which claim does the current condition keep, and which claim should it keep?"
+    },
+    {
+      "atMinute": 9,
+      "phase": "test",
+      "text": "State the root cause in one sentence before you edit the comparison."
+    }
+  ],
+  "fallbackProbe": "What is the smallest change that makes the failing test pass without touching the loop?",
+  "phasePrompts": {
+    "brief": "Read the ticket and the class, then ask me any questions you have. Reproduce the failure before editing.",
+    "implement": "The timer is running. Say which condition is wrong, then make the smallest comparison change.",
+    "test": "Run the tests. Confirm the regression test now passes for the reason you predicted.",
+    "change": "Here is the change request. Extend the status check without disturbing the base behaviour.",
+    "debrief": "Time is up. Let us review the diagnosis, the fix, the tests, and the rubric."
+  },
+  "hints": [
+    "Read the if condition as English: which statuses pass it right now?",
+    "The negation flips the test. Remove it and compare directly with OPEN.",
+    "Change only the comparison: if (claim.status().equals(\"OPEN\")). Keep the loop and the return type."
+  ],
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 35,
+      "criterion": "The status filter passes the hidden suite",
+      "strongAnswer": "Only OPEN claims are returned, order is preserved, and empty or all-closed input returns an empty list."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 20,
+      "criterion": "The reopened-claims change passes the hidden suite",
+      "strongAnswer": "OPEN and REOPENED claims are included while CLOSED claims stay out."
+    },
+    {
+      "id": "diagnosis",
+      "type": "diagnosis",
+      "weight": 20,
+      "criterion": "Diagnosis identifies the inverted comparison",
+      "strongAnswer": "Names the negated status test, explains why it keeps closed claims, and states the corrected comparison."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 15,
+      "criterion": "Clarified reproduction and fix scope",
+      "strongAnswer": "Asked what the ticket reports, how wide the fix should be, and what the follow-up adds."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 10,
+      "criterion": "Debugged independently",
+      "strongAnswer": "Found the inverted comparison with no hints, or after one hint following a genuine attempt."
+    }
+  ]
+}

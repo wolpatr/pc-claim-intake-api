@@ -581,6 +581,7 @@ function renderScenarios() {
 }
 
 function openBriefing(scenario) {
+  cancelSpeech();
   state.pendingScenario = scenario;
   $('briefDifficulty').textContent = `${roundTypeLabel(scenario.roundType)} · ${scenario.difficulty} · ${scenario.topics.join(' · ')}`;
   $('briefTitle').textContent = scenario.title;
@@ -720,6 +721,7 @@ function startSession(scenario, minutes) {
   $('clarifyInput').disabled = false;
   $('clarifyForm').querySelector('button[type="submit"]').disabled = false;
   stopDictation(true, true);
+  cancelSpeech();
   setDictationStatus('');
   updateMicUI();
   $('restoreCodeBtn').classList.add('hidden');
@@ -1855,6 +1857,7 @@ async function startExam({ ids = null, minutes = 25 } = {}) {
 
   stopExamTicker();
   stopDictation(true, true);
+  cancelSpeech();
   exam.token += 1;
   exam.active = true;
   exam.questions = data.questions;
@@ -1901,6 +1904,7 @@ async function startExam({ ids = null, minutes = 25 } = {}) {
 async function submitExam({ timedOut = false } = {}) {
   if (!exam.active || exam.submitted || exam.submitting) return;
   const token = exam.token;
+  const wasRunning = exam.running;
   exam.submitting = true;
   exam.submitted = true;
   exam.running = false;
@@ -1959,6 +1963,11 @@ async function submitExam({ timedOut = false } = {}) {
   } catch (error) {
     if (token !== exam.token) return;
     exam.submitted = false;
+    if (!exam.timedOut && exam.remaining > 0) {
+      exam.running = wasRunning;
+      exam.lastTick = performance.now();
+      startExamTicker();
+    }
     $('examTimerNote').textContent = `Submission failed: ${error.message}. You can try submitting again.`;
     showToast(error.message);
   } finally {
@@ -2063,6 +2072,7 @@ function renderExamReport(report, { timedOut = false } = {}) {
 }
 
 function exitExam() {
+  cancelSpeech();
   if (!exam.active) {
     $('examReportDialog').close();
     return;

@@ -7,10 +7,9 @@ import {
   javaFileNameFor,
   runSubmission,
 } from './lib/java.mjs';
-import { criterionThreshold, keywordCoverage } from './public/scoring.mjs';
+import { criterionThreshold, gradeForPercentage, keywordCoverage } from './public/scoring.mjs';
 import {
   DEFAULT_EXAM_COUNT,
-  gradeForPercentage,
   loadQuizBank,
   publicExamQuestion,
   scoreExam,

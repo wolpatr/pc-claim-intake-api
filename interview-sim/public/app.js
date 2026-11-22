@@ -1,4 +1,4 @@
-import { criterionThreshold, keywordCoverage } from './scoring.mjs';
+import { criterionThreshold, gradeForPercentage, keywordCoverage } from './scoring.mjs';
 
 const PHASE_SETS = {
   coding: [
@@ -83,6 +83,7 @@ const exam = {
   ticker: null,
   submitted: false,
   submitting: false,
+  token: 0,
   focused: false,
   sessionId: null,
   report: null,
@@ -100,6 +101,7 @@ const voice = {
     : null,
   listening: false,
   dictationBase: '',
+  discardResults: false,
 };
 
 function speechSupported() {
@@ -226,11 +228,18 @@ function setupRecognition() {
   recognition.interimResults = true;
   recognition.lang = 'en-US';
   recognition.onstart = () => {
+    if (voice.discardResults) {
+      try {
+        recognition.stop();
+      } catch {}
+      return;
+    }
     voice.listening = true;
     updateMicUI();
     setDictationStatus('Listening. Speak your question, then stop the microphone or press Ask when ready.');
   };
   recognition.onresult = (event) => {
+    if (voice.discardResults) return;
     let interim = '';
     let final = '';
     for (let index = event.resultIndex; index < event.results.length; index += 1) {
@@ -270,15 +279,16 @@ function setupRecognition() {
   return recognition;
 }
 
-function stopDictation(silent = false) {
-  if (voice.listening && voice.recognition) {
-    voice.listening = false;
-    try {
-      voice.recognition.stop();
-    } catch {}
-    updateMicUI();
-    if (!silent) setDictationStatus('Dictation stopped. Review the text, then press Ask when ready.');
-  }
+function stopDictation(silent = false, discard = false) {
+  if (discard) voice.discardResults = true;
+  if (!voice.recognition) return;
+  const wasListening = voice.listening;
+  voice.listening = false;
+  try {
+    voice.recognition.stop();
+  } catch {}
+  updateMicUI();
+  if (wasListening && !silent) setDictationStatus('Dictation stopped. Review the text, then press Ask when ready.');
 }
 
 function toggleDictation() {
@@ -297,6 +307,7 @@ function toggleDictation() {
   }
   const recognition = setupRecognition();
   if (!recognition) return;
+  voice.discardResults = false;
   voice.dictationBase = input.value;
   try {
     recognition.start();
@@ -708,7 +719,7 @@ function startSession(scenario, minutes) {
   $('clarifyInput').value = '';
   $('clarifyInput').disabled = false;
   $('clarifyForm').querySelector('button[type="submit"]').disabled = false;
-  stopDictation(true);
+  stopDictation(true, true);
   setDictationStatus('');
   updateMicUI();
   $('restoreCodeBtn').classList.add('hidden');
@@ -808,6 +819,7 @@ function renderPhaseUI() {
       ? 'Check sketch (optional)'
       : (key === 'change' ? 'Run change tests' : 'Run tests');
   const closed = key === 'debrief';
+  if (closed) stopDictation(true, true);
   $('hintBtn').disabled = closed || state.hints.length >= (state.scenario?.hints?.length || 3);
   $('probeBtn').disabled = closed || state.probeBusy;
   $('clarifyInput').disabled = closed;
@@ -947,7 +959,7 @@ async function submitClarify(event) {
   const input = $('clarifyInput');
   const question = input.value.trim();
   if (!question || state.clarifyBusy || currentPhase() === 'debrief') return;
-  stopDictation(true);
+  stopDictation(true, true);
 
   const token = state.sessionToken;
   state.clarifyBusy = true;
@@ -1325,10 +1337,7 @@ function scoreSession() {
   });
   const score = Math.round(criteria.reduce((sum, item) => sum + item.earned, 0));
   const missed = criteria.filter((item) => !item.met).map((item) => item.criterion);
-  let grade = 'Needs another pass';
-  if (score >= 85) grade = 'Strong hire signal';
-  else if (score >= 70) grade = 'Solid, with gaps';
-  else if (score >= 50) grade = 'Developing';
+  const grade = gradeForPercentage(score);
   return {
     score,
     grade,
@@ -1681,24 +1690,32 @@ function startRecommended() {
   startSession(next, next.phaseTimes);
 }
 
-function exitSession() {
-  if (!state.active) return;
-  if (!window.confirm('Leave this session? Only a completed debrief is saved to local progress.')) return;
+function endScenarioSession() {
   state.sessionToken += 1;
   state.active = false;
   state.running = false;
   if (state.ticker) clearInterval(state.ticker);
   state.ticker = null;
+  stopDictation(true, true);
+  cancelSpeech();
+  setDictationStatus('');
   $('sessionScreen').classList.add('hidden');
   $('setupScreen').classList.remove('hidden');
   $('exitBtn').classList.add('hidden');
   $('debriefDialog').close();
 }
 
+function exitSession() {
+  if (!state.active) return;
+  if (!window.confirm('Leave this session? Only a completed debrief is saved to local progress.')) return;
+  endScenarioSession();
+}
+
 function clampExamMinutes(value, fallback = 25) {
+  if (value === '' || value === null || value === undefined) return fallback;
   const minutes = Number(value);
   if (!Number.isFinite(minutes)) return fallback;
-  return Math.max(1, Math.min(180, Math.round(minutes)));
+  return Math.max(5, Math.min(120, Math.round(minutes)));
 }
 
 function examTopicName(topicId) {
@@ -1831,8 +1848,14 @@ async function startExam({ ids = null, minutes = 25 } = {}) {
     return;
   }
 
+  if (state.active) {
+    if (!window.confirm('Leave this session? Only a completed debrief is saved to local progress.')) return;
+    endScenarioSession();
+  }
+
   stopExamTicker();
-  stopDictation(true);
+  stopDictation(true, true);
+  exam.token += 1;
   exam.active = true;
   exam.questions = data.questions;
   exam.topics = data.topics || [];
@@ -1877,6 +1900,7 @@ async function startExam({ ids = null, minutes = 25 } = {}) {
 
 async function submitExam({ timedOut = false } = {}) {
   if (!exam.active || exam.submitted || exam.submitting) return;
+  const token = exam.token;
   exam.submitting = true;
   exam.submitted = true;
   exam.running = false;
@@ -1892,6 +1916,7 @@ async function submitExam({ timedOut = false } = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ questionIds, answers }),
     });
+    if (token !== exam.token) return;
     exam.report = report;
     const record = {
       kind: 'exam',
@@ -1921,21 +1946,26 @@ async function submitExam({ timedOut = false } = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ record }),
       });
+      if (token !== exam.token) return;
       state.progress.unshift(saved.record);
     } catch (error) {
-      showToast(`Could not save exam progress: ${error.message}`);
+      if (token === exam.token) showToast(`Could not save exam progress: ${error.message}`);
     }
+    if (token !== exam.token) return;
     renderExamReport(report, { timedOut: exam.timedOut });
     $('examResultAnnouncement').textContent = '';
     $('examReportDialog').showModal();
     $('examResultAnnouncement').textContent = exam.summaryText;
   } catch (error) {
+    if (token !== exam.token) return;
     exam.submitted = false;
     $('examTimerNote').textContent = `Submission failed: ${error.message}. You can try submitting again.`;
     showToast(error.message);
   } finally {
-    exam.submitting = false;
-    renderExamNav();
+    if (token === exam.token) {
+      exam.submitting = false;
+      renderExamNav();
+    }
   }
 }
 
@@ -2033,10 +2063,14 @@ function renderExamReport(report, { timedOut = false } = {}) {
 }
 
 function exitExam() {
-  if (!exam.active) return;
+  if (!exam.active) {
+    $('examReportDialog').close();
+    return;
+  }
   if (!exam.submitted && !window.confirm('Leave the exam? Your answers will not be saved.')) return;
+  exam.token += 1;
   stopExamTicker();
-  stopDictation(true);
+  stopDictation(true, true);
   exam.active = false;
   exam.running = false;
   exam.submitted = false;

@@ -140,9 +140,7 @@ async function handleApi(request, response, url) {
       sendJson(response, 400, { error: 'A focused retake needs at least one question id.' });
       return true;
     }
-    const questions = ids
-      ? selectExamQuestions({ ids })
-      : selectExamQuestions({ count: Number(url.searchParams.get('count')) || undefined });
+    const questions = ids ? selectExamQuestions({ ids }) : selectExamQuestions();
     if (!questions) {
       sendJson(response, 400, { error: 'Unknown exam question id.' });
       return true;

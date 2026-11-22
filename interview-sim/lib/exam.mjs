@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gradeForPercentage } from '../public/scoring.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const quizPath = path.resolve(here, '..', '..', 'quiz', 'questions.js');
@@ -8,12 +9,6 @@ const require = createRequire(import.meta.url);
 
 export const DEFAULT_EXAM_COUNT = 20;
 export const DEFAULT_EXAM_MINUTES = 25;
-export const GRADE_BANDS = [
-  { min: 85, label: 'Strong hire signal' },
-  { min: 70, label: 'Solid, with gaps' },
-  { min: 50, label: 'Developing' },
-  { min: 0, label: 'Needs another pass' },
-];
 
 let bankCache = null;
 
@@ -43,14 +38,6 @@ export function loadQuizBank({ refresh = false } = {}) {
   }
   bankCache = data;
   return bankCache;
-}
-
-export function gradeForPercentage(value) {
-  const percentage = Number.isFinite(Number(value)) ? Number(value) : 0;
-  for (const band of GRADE_BANDS) {
-    if (percentage >= band.min) return band.label;
-  }
-  return GRADE_BANDS[GRADE_BANDS.length - 1].label;
 }
 
 export function publicExamQuestion(question) {

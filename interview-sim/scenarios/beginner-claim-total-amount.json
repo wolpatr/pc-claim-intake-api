@@ -1,0 +1,182 @@
+{
+  "id": "beginner-claim-total-amount",
+  "title": "Total the approved claim amounts",
+  "tagline": "Add up the approved claim amounts in one loop, then return a summary with the count.",
+  "difficulty": "Beginner",
+  "roundType": "coding",
+  "topics": [
+    "Claim domain",
+    "Loops",
+    "Money",
+    "Java"
+  ],
+  "phaseTimes": {
+    "brief": 3,
+    "implement": 8,
+    "test": 4,
+    "change": 4,
+    "debrief": 3
+  },
+  "intro": "Hi, thanks for making the time. This round is one small aggregation method for the claims dashboard: add up the approved claim amounts. Ask me anything before you start.",
+  "clarifyingQuestions": [
+    {
+      "id": "empty",
+      "topic": "Empty input",
+      "question": "What should an empty claim list return?",
+      "keywords": [
+        "empty",
+        "null",
+        "zero",
+        "return"
+      ],
+      "answer": "Return 0 for a null or empty list. Do not throw.",
+      "coach": "Ask about the empty case before writing the loop."
+    },
+    {
+      "id": "status",
+      "topic": "Status rule",
+      "question": "Which claims count toward the total?",
+      "keywords": [
+        "approved",
+        "status",
+        "only",
+        "count"
+      ],
+      "answer": "Only claims whose status is exactly \"APPROVED\" count; every other status adds nothing.",
+      "coach": "Ask which statuses are included so you do not sum everything."
+    },
+    {
+      "id": "amounts",
+      "topic": "Amount type",
+      "question": "How are claim amounts represented?",
+      "keywords": [
+        "amount",
+        "cents",
+        "long",
+        "money"
+      ],
+      "answer": "Each claim carries amountCents as a long. Add the longs directly; do not convert to double.",
+      "coach": "Ask how money is stored before choosing an accumulator type."
+    }
+  ],
+  "clarifyingFallback": "Assume the list may be null or empty, amounts are non-null long cents, and only claims whose status is exactly \"APPROVED\" count. Choose the simplest rule for anything else and say the assumption out loud.",
+  "problemStatement": "### Context\n\nYou are working on the claim intake API. Each claim has an id, a status, and an amount in cents, and the dashboard needs a helper that totals the approved ones.\n\n### Your task\n\nImplement ClaimTotals.approvedTotal(List<Claim> claims).\n\n### Rules\n\n- Return the sum of amountCents for claims whose status is exactly \"APPROVED\".\n- Return 0 when the list is empty or null.\n- Claims with any other status (CLOSED, PENDING, REOPENED) add nothing.\n- Do not modify the list or the claims.\n- A single loop over the list is enough.\n\n### Visible examples\n\n- [C1 APPROVED 1200, C2 CLOSED 500, C3 APPROVED 800] returns 2000.\n- [] returns 0.\n- [C1 PENDING 900] returns 0.\n\n### Notes\n\n- Keep the class in the default package and in the starter file.\n- The hidden tests call approvedTotal directly on a ClaimTotals instance.",
+  "fileName": "ClaimTotals.java",
+  "starterCode": "import java.util.List;\n\npublic final class ClaimTotals {\n\n    public record Claim(String id, String status, long amountCents) {\n    }\n\n    public long approvedTotal(List<Claim> claims) {\n        // TODO: add up amountCents for claims whose status is exactly \"APPROVED\".\n        return 0L;\n    }\n}\n",
+  "examples": [
+    {
+      "input": "claims = [C1 APPROVED 1200, C2 CLOSED 500, C3 APPROVED 800]",
+      "output": "2000"
+    },
+    {
+      "input": "claims = []",
+      "output": "0"
+    },
+    {
+      "input": "claims = [C1 PENDING 900]",
+      "output": "0"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "mixed statuses total only the approved amounts",
+      "className": "MixedStatusTotalTest",
+      "code": "import java.util.List;\n\npublic class MixedStatusTotalTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 1200L),\n                new ClaimTotals.Claim(\"C2\", \"CLOSED\", 500L),\n                new ClaimTotals.Claim(\"C3\", new String(\"APPROVED\"), 800L));\n        TestSupport.eq(2000L, new ClaimTotals().approvedTotal(claims), \"approved total ignores closed claims\");\n        System.out.println(\"PASS: mixed statuses total only the approved amounts\");\n    }\n}\n"
+    },
+    {
+      "name": "empty and null lists return zero",
+      "className": "EmptyTotalTest",
+      "code": "import java.util.List;\n\npublic class EmptyTotalTest {\n    public static void main(String[] args) {\n        TestSupport.eq(0L, new ClaimTotals().approvedTotal(List.of()), \"empty list\");\n        TestSupport.eq(0L, new ClaimTotals().approvedTotal(null), \"null list\");\n        System.out.println(\"PASS: empty and null lists return zero\");\n    }\n}\n"
+    },
+    {
+      "name": "all approved claims are summed",
+      "className": "AllApprovedTotalTest",
+      "code": "import java.util.List;\n\npublic class AllApprovedTotalTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 100L),\n                new ClaimTotals.Claim(\"C2\", \"APPROVED\", 250L),\n                new ClaimTotals.Claim(\"C3\", \"approved\", 999L));\n        TestSupport.eq(350L, new ClaimTotals().approvedTotal(claims), \"all approved\");\n        System.out.println(\"PASS: all approved claims are summed\");\n    }\n}\n"
+    },
+    {
+      "name": "no approved claims totals zero",
+      "className": "NoApprovedTotalTest",
+      "code": "import java.util.List;\n\npublic class NoApprovedTotalTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"PENDING\", 900L),\n                new ClaimTotals.Claim(\"C2\", \"CLOSED\", 300L));\n        TestSupport.eq(0L, new ClaimTotals().approvedTotal(claims), \"no approved claims\");\n        System.out.println(\"PASS: no approved claims totals zero\");\n    }\n}\n"
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Return a summary with the approved total and the number of approved claims.",
+    "statement": "### Change request\n\nThe dashboard tile now shows both the money total and how many claims it covers.\n\n- Add Summary summarize(List<Claim> claims), returning the record Summary(long totalCents, int approvedCount) already declared in the starter.\n- totalCents follows the same rule as approvedTotal: only claims whose status is exactly \"APPROVED\" count.\n- approvedCount is the number of approved claims included in the total.\n- A null or empty list returns Summary(0, 0).\n- approvedTotal must keep working and must agree with summarize.",
+    "starterCode": "import java.util.List;\n\npublic final class ClaimTotals {\n\n    public record Claim(String id, String status, long amountCents) {\n    }\n\n    public record Summary(long totalCents, int approvedCount) {\n    }\n\n    public long approvedTotal(List<Claim> claims) {\n        if (claims == null || claims.isEmpty()) {\n            return 0L;\n        }\n        long total = 0L;\n        for (Claim claim : claims) {\n            if (claim.status().equals(\"APPROVED\")) {\n                total += claim.amountCents();\n            }\n        }\n        return total;\n    }\n\n    public Summary summarize(List<Claim> claims) {\n        // TODO: return the approved total and the number of approved claims.\n        return new Summary(0L, 0);\n    }\n}\n",
+    "fileName": "ClaimTotals.java",
+    "hiddenTests": [
+      {
+        "name": "summary reports the approved total and count",
+        "className": "SummaryTotalsTest",
+        "code": "import java.util.List;\n\npublic class SummaryTotalsTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 1200L),\n                new ClaimTotals.Claim(\"C2\", \"CLOSED\", 500L),\n                new ClaimTotals.Claim(\"C3\", \"APPROVED\", 800L),\n                new ClaimTotals.Claim(\"C4\", new String(\"APPROVED\"), 100L));\n        var summary = new ClaimTotals().summarize(claims);\n        TestSupport.eq(2100L, summary.totalCents(), \"summary total\");\n        TestSupport.eq(3, summary.approvedCount(), \"approved count\");\n        System.out.println(\"PASS: summary reports the approved total and count\");\n    }\n}\n"
+      },
+      {
+        "name": "summary handles empty and null lists",
+        "className": "SummaryEmptyTest",
+        "code": "import java.util.List;\n\npublic class SummaryEmptyTest {\n    public static void main(String[] args) {\n        var counter = new ClaimTotals();\n        var empty = counter.summarize(List.of());\n        TestSupport.eq(0L, empty.totalCents(), \"empty total\");\n        TestSupport.eq(0, empty.approvedCount(), \"empty count\");\n        TestSupport.eq(0L, counter.summarize(null).totalCents(), \"null total\");\n        System.out.println(\"PASS: summary handles empty and null lists\");\n    }\n}\n"
+      },
+      {
+        "name": "summary agrees with the total method",
+        "className": "SummaryAgreesTest",
+        "code": "import java.util.List;\n\npublic class SummaryAgreesTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 700L),\n                new ClaimTotals.Claim(\"C2\", \"PENDING\", 200L),\n                new ClaimTotals.Claim(\"C3\", \"approved\", 400L));\n        var counter = new ClaimTotals();\n        TestSupport.eq(counter.approvedTotal(claims), counter.summarize(claims).totalCents(), \"summary agrees with total\");\n        TestSupport.eq(1, counter.summarize(claims).approvedCount(), \"pending excluded from count\");\n        System.out.println(\"PASS: summary agrees with the total method\");\n    }\n}\n"
+      }
+    ]
+  },
+  "referenceSolution": "import java.util.List;\n\npublic final class ClaimTotals {\n\n    public record Claim(String id, String status, long amountCents) {\n    }\n\n    public record Summary(long totalCents, int approvedCount) {\n    }\n\n    public long approvedTotal(List<Claim> claims) {\n        return summarize(claims).totalCents();\n    }\n\n    public Summary summarize(List<Claim> claims) {\n        if (claims == null || claims.isEmpty()) {\n            return new Summary(0L, 0);\n        }\n        long total = 0L;\n        int count = 0;\n        for (Claim claim : claims) {\n            if (claim.status().equals(\"APPROVED\")) {\n                total += claim.amountCents();\n                count += 1;\n            }\n        }\n        return new Summary(total, count);\n    }\n}\n",
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 2,
+      "phase": "implement",
+      "text": "What accumulator do you need, and what condition decides whether a claim adds to it?"
+    },
+    {
+      "atMinute": 3,
+      "phase": "test",
+      "text": "Which claim in the failing case did your loop treat differently than expected, and why?"
+    }
+  ],
+  "fallbackProbe": "What is the smallest list that shows your method summing a claim it should ignore?",
+  "phasePrompts": {
+    "brief": "Read the problem, then ask me any questions you have. When you are ready, tell me your plan and start the clock.",
+    "implement": "The timer is running. Say what you accumulate and which status adds to it, then write the method.",
+    "test": "Run the tests. Read the first failure, explain it, then fix it.",
+    "change": "Here is the change request. Keep approvedTotal correct and add the summary.",
+    "debrief": "Time is up. Let us review the tests, your approach, and the rubric."
+  },
+  "hints": [
+    "You need one long accumulator for the total and one loop over the list.",
+    "Inside the loop, test the status first. Only an exact APPROVED match adds the amount.",
+    "For the change, let approvedTotal delegate to summarize so the total and the count cannot disagree."
+  ],
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 40,
+      "criterion": "The approved-total method passes the hidden suite",
+      "strongAnswer": "Only APPROVED claims are summed, and empty or non-approved input returns 0."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 25,
+      "criterion": "The summary change passes the hidden suite",
+      "strongAnswer": "The summary reports the right total and approved count, and approvedTotal still agrees with it."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 20,
+      "criterion": "Clarified the rules before coding",
+      "strongAnswer": "Asked about empty input, which statuses count, and how amounts are stored before writing the loop."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 15,
+      "criterion": "Worked independently",
+      "strongAnswer": "Found the accumulator and the status check with no hints, or after one genuine attempt."
+    }
+  ]
+}

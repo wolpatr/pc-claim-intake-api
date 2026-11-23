@@ -1,0 +1,191 @@
+{
+  "id": "design-claim-documents",
+  "title": "Design claim document intake",
+  "tagline": "Model attaching, validating, storing, and retrieving claim documents so a new document type does not rewrite the service.",
+  "difficulty": "Beginner",
+  "roundType": "design",
+  "topics": [
+    "Claim domain",
+    "OOP design",
+    "Interfaces",
+    "Extensibility"
+  ],
+  "phaseTimes": {
+    "brief": 3,
+    "implement": 8,
+    "test": 3,
+    "change": 3,
+    "debrief": 3
+  },
+  "intro": "This round is object-oriented design. When a policyholder files a claim, they attach documents such as invoices and photos. We need to validate them, store them, and read them back. Sketch the design and defend the boundaries.",
+  "problemStatement": "### Context\n\nA claim can have several attached documents. Each upload arrives with metadata and file content, and the intake service must accept or reject it, store it, and list the documents for a claim.\n\n### Your task\n\nSketch the object-oriented design in the editor: types, responsibilities, interfaces, extension points, and trade-offs. You do not need a full implementation.",
+  "fileName": "ClaimDocumentDesign.java",
+  "starterCode": "Design notes\n\nOwnership:\n\nBoundaries:\n\nChange path:\n\nChoices:\n",
+  "testSupport": "",
+  "examples": [
+    {
+      "input": "a policyholder uploads an INVOICE that is an accepted type and under the size limit",
+      "output": "the validator accepts it and the store saves the metadata"
+    },
+    {
+      "input": "an upload has an unknown file type",
+      "output": "the validator rejects it with a reason; nothing is stored"
+    },
+    {
+      "input": "a new PHOTO document type is added",
+      "output": "a new validator implementation; the service stays unchanged"
+    }
+  ],
+  "design": {
+    "prompt": "Design how claim documents are validated, stored, and retrieved.",
+    "constraints": [
+      "No external frameworks and no network access.",
+      "Inject the clock so upload times are deterministic in tests.",
+      "Add a new document type without editing the service core.",
+      "Keep the type count small enough to defend in an interview.",
+      "Separate validation from storage.",
+      "Explain the trade-offs you accept."
+    ],
+    "probingQuestions": [
+      {
+        "atMinute": 2,
+        "text": "What are the core types, and which one decides versus which one stores?"
+      },
+      {
+        "atMinute": 5,
+        "text": "What does the store interface look like, and why should the service not know its implementation?"
+      },
+      {
+        "atMinute": 7,
+        "text": "How does a new document type plug in without changing the service?"
+      }
+    ]
+  },
+  "clarifyingQuestions": [
+    {
+      "id": "types",
+      "topic": "Document types",
+      "question": "Which document types do we accept?",
+      "keywords": [
+        "type",
+        "invoice",
+        "photo",
+        "accept"
+      ],
+      "answer": "Start with INVOICE, POLICE_REPORT, and PHOTO. A new type should be a new validator, not a new branch inside the service.",
+      "coach": "Ask which types exist so the extension point is clear."
+    },
+    {
+      "id": "storage",
+      "topic": "Storage",
+      "question": "Where should uploaded documents be stored?",
+      "keywords": [
+        "store",
+        "storage",
+        "metadata",
+        "content"
+      ],
+      "answer": "Keep metadata and file content behind a store interface. In-memory fakes cover tests, and the service depends only on the contract.",
+      "coach": "Ask how storage is supplied so the design stays testable."
+    },
+    {
+      "id": "change",
+      "topic": "Constraint change",
+      "question": "What constraint change should I plan for?",
+      "keywords": [
+        "virus scan",
+        "scan",
+        "before",
+        "storage"
+      ],
+      "answer": "Expect a virus scan that must run before storage. It should be another interface the service calls, not a new branch for a specific type.",
+      "coach": "Ask what extension will test whether the boundaries are real."
+    }
+  ],
+  "clarifyingFallback": "Assume accepted types start with INVOICE, POLICE_REPORT, and PHOTO, the clock is injected, storage sits behind an interface, and a new rule arrives as another collaborator. State any missing assumption.",
+  "fallbackProbe": "Which type would change if every upload had to be scanned before it was stored?",
+  "phasePrompts": {
+    "brief": "Read the problem and constraints. Ask the questions you would ask a design interviewer, then state your plan.",
+    "implement": "The design timer is running. Write the responsibilities and interfaces in the editor, and say the trade-offs out loud as you go.",
+    "test": "Review your sketch. Which decision is hardest to test, and what boundary would make it testable?",
+    "change": "Here is the constraint change. Explain how your design absorbs it and which interface changes, if any.",
+    "debrief": "Time is up. Let us compare your structure, responsibilities, interfaces, extensibility, and stated trade-offs with the reference design."
+  },
+  "hints": [
+    "Separate the decision (is this document acceptable) from persistence (save and read it). The service coordinates both.",
+    "Make the validator and the store interfaces with small contracts, and inject the clock for upload times.",
+    "For the constraint change, add a scanner interface the service calls before the store. If the service needs a new if-branch per type, the boundary is wrong."
+  ],
+  "rubric": [
+    {
+      "id": "structure",
+      "type": "notes",
+      "weight": 25,
+      "criterion": "Structure and core types",
+      "strongAnswer": "Names a document record, a document type, a document validator, a document store, and a service that coordinates them.",
+      "keywords": [
+        "document",
+        "validator",
+        "store",
+        "service"
+      ]
+    },
+    {
+      "id": "responsibilities",
+      "type": "notes",
+      "weight": 20,
+      "criterion": "Separation of responsibilities",
+      "strongAnswer": "Validation and storage stay separate, the service orchestrates, and the validator owns each rule.",
+      "keywords": [
+        "validation",
+        "storage",
+        "service",
+        "validator"
+      ]
+    },
+    {
+      "id": "interfaces",
+      "type": "notes",
+      "weight": 20,
+      "criterion": "Interface choices",
+      "strongAnswer": "The validator, store, and clock are small interfaces injected into the service.",
+      "keywords": [
+        "interface",
+        "injected",
+        "store",
+        "clock"
+      ]
+    },
+    {
+      "id": "extensibility",
+      "type": "notes",
+      "weight": 20,
+      "criterion": "Extensibility",
+      "strongAnswer": "A new document type is a new implementation; the service stays unchanged.",
+      "keywords": [
+        "type",
+        "implementation",
+        "unchanged",
+        "service"
+      ]
+    },
+    {
+      "id": "tradeoffs",
+      "type": "notes",
+      "weight": 15,
+      "criterion": "Stated trade-offs",
+      "strongAnswer": "Explains why storage and validation stay separate, the cost of an extra type, and the trade off you accept.",
+      "keywords": [
+        "storage",
+        "validation",
+        "cost",
+        "trade off"
+      ]
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Security now requires a virus scan before any document is stored.",
+    "statement": "### Constraint change\n\nSecurity adds a scan requirement:\n\n1. Every upload must be scanned before it is stored, and a rejected scan must stop the save.\n2. The reason for accepting, rejecting, or storing a document must be explainable to support.\n\nAnswer in your design notes: which interface or type changes, how the scan runs without the service knowing file details, and what trade-off you accept. This is a design extension, not a code delta."
+  },
+  "referenceDesign": "Reference design: claim document intake\n\nCore types\n- ClaimDocument: a metadata record for one uploaded file: id, claim id, file name, document type, size in bytes, and upload time.\n- DocumentType: an enum of the kinds we accept, such as INVOICE, POLICE_REPORT, and PHOTO.\n- DocumentValidator: an interface that returns a ValidationResult for a ClaimDocument.\n- DocumentStore: an interface with save(document) and findByClaim(claimId).\n- ClaimDocumentService: coordinates validation, storage, and retrieval; it depends only on interfaces.\n- Clock: injected so the upload time is deterministic in tests.\n\nResponsibilities\n- Validation and storage are separate: the validator decides whether a file is acceptable; the store only persists and reads.\n- The service orchestrates: it asks the validator, then the store, and never branches on a specific document type.\n- Each document type owns its own validation policy behind the validator interface.\n\nInterfaces\n- DocumentValidator, DocumentStore, and Clock are small interfaces, injected into the service.\n- The service holds contracts, so tests use in-memory fakes.\n\nExtensibility\n- A new document type is a new validator implementation registered with the service; the service stays unchanged.\n- Adding a rule such as a size limit is a new validator, not an edit to the service loop.\n\nTrade-offs\n- Storing metadata apart from file content keeps the store simple, but it costs a lookup to fetch the bytes.\n- Keeping validation apart from storage costs one more type, but it lets validation change without touching persistence.\n- I accept the small cost of an extra collaborator so the trade off stays visible and testable."
+}

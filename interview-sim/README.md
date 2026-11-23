@@ -169,13 +169,16 @@ The AI key stays server-only and never reaches the browser.
 
 ## Scenarios
 
-Fifteen scenarios ship under `interview-sim/scenarios/`, across Beginner, Associate, Intermediate, Senior, and Consultant difficulty:
+Eighteen scenarios ship under `interview-sim/scenarios/`, across Beginner, Associate, Intermediate, Senior, and Consultant difficulty:
 
 | Scenario | Type | Area | Base round | Follow-up |
 | --- | --- | --- | --- | --- |
 | `beginner-claim-newest` | coding | Claim domain | Return the claim with the latest incident date | Break date ties by claim id |
 | `beginner-claim-name-check` | coding | Claim domain | Validate one claimant name field | Reject names longer than 80 characters |
 | `beginner-claim-filter-bug` | debugging | Claim domain | Fix an inverted claim status filter | Include reopened claims |
+| `beginner-claim-total-amount` | coding | Claim domain | Total the approved claim amounts | Return a summary with the total and count |
+| `beginner-claim-count-bug` | debugging | Claim domain | Fix a counter that misses the last claim | Count reopened claims too |
+| `design-claim-documents` | design | Claim domain | Validate, store, and retrieve claim documents | Mandatory virus scan before storage |
 | `claim-status-transition` | coding | Claim domain | Status transition method with an enum | Audit-note overload and reopening rule |
 | `claim-validation` | coding | Claim domain | Ordered validation messages | Field-keyed map API for a form |
 | `claim-query-filter` | coding | Claim domain | Fix a broken filter and sort | Search summary counts and totals |
@@ -288,7 +291,7 @@ interview-sim/
     manifest.webmanifest  installable web app metadata
     sw.js               app-shell service worker
     icons/              192 px, 512 px, and maskable PNG icons
-  scenarios/            fifteen scenario definitions across three round types
+  scenarios/            eighteen scenario definitions across three round types
   progress/             gitignored local session records
   .certs/               gitignored generated HTTPS certificates
 ```

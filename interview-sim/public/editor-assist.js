@@ -340,6 +340,16 @@ function splitChain(expression) {
   let start = 0;
   for (let index = 0; index < expression.length; index += 1) {
     const char = expression[index];
+    if (char === '"' || char === "'") {
+      for (index += 1; index < expression.length; index += 1) {
+        if (expression[index] === '\\') {
+          index += 1;
+          continue;
+        }
+        if (expression[index] === char) break;
+      }
+      continue;
+    }
     if (char === '(' || char === '[' || char === '<') depth += 1;
     else if (char === ')' || char === ']' || char === '>') depth = Math.max(0, depth - 1);
     else if (char === '.' && depth === 0) {
@@ -376,7 +386,7 @@ function resolveReceiverType(beforeCaret, model) {
   let current = null;
   for (let index = 0; index < parts.length; index += 1) {
     const part = parts[index];
-    const call = part.match(/^([A-Za-z_$][\w$]*)\s*\(([^)]*)\)$/);
+    const call = part.match(/^([A-Za-z_$][\w$]*)\s*\([\s\S]*\)$/);
     const name = call ? call[1] : part;
     if (index === 0) {
       if (call) current = model.methodReturns.get(name) || null;

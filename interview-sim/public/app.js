@@ -542,9 +542,9 @@ function draftTimerId(scenarioId, kind) {
 
 function cancelDraftSave(scenarioId, kind) {
   const id = draftTimerId(scenarioId, kind);
-  const timer = draftTimers.get(id);
-  if (!timer) return;
-  clearTimeout(timer);
+  const entry = draftTimers.get(id);
+  if (!entry) return;
+  clearTimeout(entry.timer);
   draftTimers.delete(id);
 }
 

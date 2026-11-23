@@ -1,0 +1,205 @@
+{
+  "id": "beginner-claim-count-bug",
+  "title": "Fix a claim counter that misses the last claim",
+  "tagline": "The approved-claims badge is one short. Reproduce the off-by-one loop, explain it, and fix it.",
+  "difficulty": "Beginner",
+  "roundType": "debugging",
+  "topics": [
+    "Claim domain",
+    "Debugging",
+    "Loops",
+    "Java"
+  ],
+  "phaseTimes": {
+    "brief": 4,
+    "implement": 8,
+    "test": 5,
+    "change": 4,
+    "debrief": 3
+  },
+  "intro": "Thanks for making the time. This round is a bug fix in a small Java counter. The approved-claims badge is showing one fewer than the real count. You have the broken class and a failing test. Explain the root cause before changing the loop.",
+  "reproductionNote": "Support ticket COUNT-7: \"The approved-claims badge is one short. Repro: count [C1 APPROVED, C2 APPROVED]; the method returns 1 but the badge should show 2.\" Run LastApprovedCountedTest in the hidden suite.",
+  "diagnosis": {
+    "prompt": "Explain the root cause in your own words: why does the counter miss a claim, and what loop bound should it use?",
+    "keywords": [
+      "off by one",
+      "loop",
+      "last",
+      "size",
+      "bound"
+    ],
+    "strongAnswer": "The loop bound is off by one: index < claims.size() - 1 stops before the last element, so the final claim is never counted. Use index < claims.size() so the loop reaches every claim."
+  },
+  "clarifyingQuestions": [
+    {
+      "id": "ticket",
+      "topic": "Reproduction",
+      "question": "What does the ticket say is wrong?",
+      "keywords": [
+        "ticket",
+        "reproduce",
+        "count",
+        "one short",
+        "wrong"
+      ],
+      "answer": "The ticket says the count is one too low. Reproduce it with a small list before editing.",
+      "coach": "Ask for the reported behaviour and reproduce it first."
+    },
+    {
+      "id": "scope",
+      "topic": "Fix scope",
+      "question": "Should I rewrite the whole method or change one line?",
+      "keywords": [
+        "one line",
+        "rewrite",
+        "scope",
+        "bound",
+        "fix"
+      ],
+      "answer": "Change only the loop bound. Keep the method signature, the status comparison, and the return type.",
+      "coach": "Ask how wide the fix should be before editing."
+    },
+    {
+      "id": "change",
+      "topic": "Change request",
+      "question": "What follow-up change is coming?",
+      "keywords": [
+        "change",
+        "reopened",
+        "include",
+        "follow-up",
+        "status"
+      ],
+      "answer": "The follow-up also counts REOPENED claims in the same badge, so keep the status check easy to extend.",
+      "coach": "Ask about the follow-up so the fix leaves room for it."
+    }
+  ],
+  "clarifyingFallback": "Assume the method is a pure in-memory count, the input list is non-null, and statuses are plain strings. Reproduce the failure before editing.",
+  "problemStatement": "### Context\n\nClaimCounter feeds the approved-claims badge on the intake dashboard. A support ticket says the badge shows one fewer approved claim than it should.\n\n### Your task\n\nRead the broken class, reproduce the failure, identify the root cause, and fix the count.\n\n### Rules\n\n- countApproved returns the number of claims whose status is exactly \"APPROVED\".\n- Do not modify the input list.\n- An empty list returns 0.\n- Change only the loop; keep the method signature and the status comparison.\n\n### Reproduction\n\nThe ticket and the failing test are above the editor. Explain the root cause before editing.",
+  "fileName": "ClaimCounter.java",
+  "starterCode": "import java.util.List;\n\npublic final class ClaimCounter {\n\n    public record Claim(String id, String status) {\n    }\n\n    public int countApproved(List<Claim> claims) {\n        int count = 0;\n        for (int index = 0; index < claims.size() - 1; index += 1) {\n            if (claims.get(index).status().equals(\"APPROVED\")) {\n                count += 1;\n            }\n        }\n        return count;\n    }\n}\n",
+  "examples": [
+    {
+      "input": "[C1 APPROVED, C2 APPROVED]",
+      "output": "2"
+    },
+    {
+      "input": "[C1 APPROVED, C2 CLOSED]",
+      "output": "1"
+    },
+    {
+      "input": "[]",
+      "output": "0"
+    }
+  ],
+  "hiddenTests": [
+    {
+      "name": "the last approved claim is counted",
+      "className": "LastApprovedCountedTest",
+      "regression": true,
+      "code": "import java.util.List;\n\npublic class LastApprovedCountedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"APPROVED\"),\n                new ClaimCounter.Claim(\"C2\", \"APPROVED\"));\n        TestSupport.eq(2, new ClaimCounter().countApproved(claims), \"approved count\");\n        System.out.println(\"PASS: the last approved claim is counted\");\n    }\n}\n"
+    },
+    {
+      "name": "a single approved claim is counted",
+      "className": "SingleApprovedCountedTest",
+      "code": "import java.util.List;\n\npublic class SingleApprovedCountedTest {\n    public static void main(String[] args) {\n        TestSupport.eq(1, new ClaimCounter().countApproved(List.of(new ClaimCounter.Claim(\"C9\", \"APPROVED\"))), \"single approved claim\");\n        System.out.println(\"PASS: a single approved claim is counted\");\n    }\n}\n"
+    },
+    {
+      "name": "non-approved claims are excluded",
+      "className": "NonApprovedExcludedTest",
+      "code": "import java.util.List;\n\npublic class NonApprovedExcludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimCounter.Claim(\"C2\", \"APPROVED\"),\n                new ClaimCounter.Claim(\"C3\", \"PENDING\"));\n        TestSupport.eq(1, new ClaimCounter().countApproved(claims), \"only approved counted\");\n        System.out.println(\"PASS: non-approved claims are excluded\");\n    }\n}\n"
+    },
+    {
+      "name": "an empty list returns zero",
+      "className": "EmptyCountInputTest",
+      "code": "import java.util.List;\n\npublic class EmptyCountInputTest {\n    public static void main(String[] args) {\n        TestSupport.eq(0, new ClaimCounter().countApproved(List.of()), \"empty input\");\n        System.out.println(\"PASS: an empty list returns zero\");\n    }\n}\n"
+    }
+  ],
+  "changeRequest": {
+    "prompt": "Also count reopened claims in the approved badge.",
+    "statement": "### Change request\n\nReopened claims should count as still needing attention.\n\n- countApproved returns the number of claims whose status is exactly \"APPROVED\" or exactly \"REOPENED\".\n- Leave the input list unchanged and return 0 for empty input.\n- CLOSED and any other status stay out.",
+    "starterCode": "import java.util.List;\n\npublic final class ClaimCounter {\n\n    public record Claim(String id, String status) {\n    }\n\n    public int countApproved(List<Claim> claims) {\n        int count = 0;\n        for (int index = 0; index < claims.size(); index += 1) {\n            // TODO: REOPENED claims belong in the count too.\n            if (claims.get(index).status().equals(\"APPROVED\")) {\n                count += 1;\n            }\n        }\n        return count;\n    }\n}\n",
+    "fileName": "ClaimCounter.java",
+    "hiddenTests": [
+      {
+        "name": "reopened claims are counted",
+        "className": "ReopenedCountedTest",
+        "code": "import java.util.List;\n\npublic class ReopenedCountedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"APPROVED\"),\n                new ClaimCounter.Claim(\"C2\", \"REOPENED\"),\n                new ClaimCounter.Claim(\"C3\", \"CLOSED\"));\n        TestSupport.eq(2, new ClaimCounter().countApproved(claims), \"approved plus reopened\");\n        System.out.println(\"PASS: reopened claims are counted\");\n    }\n}\n"
+      },
+      {
+        "name": "closed and pending claims stay out",
+        "className": "ClosedStillExcludedTest",
+        "code": "import java.util.List;\n\npublic class ClosedStillExcludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimCounter.Claim(\"C2\", \"REOPENED\"),\n                new ClaimCounter.Claim(\"C3\", \"PENDING\"));\n        TestSupport.eq(1, new ClaimCounter().countApproved(claims), \"only reopened is included\");\n        System.out.println(\"PASS: closed and pending claims stay out\");\n    }\n}\n"
+      },
+      {
+        "name": "approved claims are still counted after the change",
+        "className": "ApprovedAfterChangeTest",
+        "code": "import java.util.List;\n\npublic class ApprovedAfterChangeTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"APPROVED\"),\n                new ClaimCounter.Claim(\"C2\", \"APPROVED\"));\n        TestSupport.eq(2, new ClaimCounter().countApproved(claims), \"approved claims still included\");\n        System.out.println(\"PASS: approved claims are still counted after the change\");\n    }\n}\n"
+      }
+    ]
+  },
+  "referenceSolution": "import java.util.List;\n\npublic final class ClaimCounter {\n\n    public record Claim(String id, String status) {\n    }\n\n    public int countApproved(List<Claim> claims) {\n        int count = 0;\n        for (int index = 0; index < claims.size(); index += 1) {\n            String status = claims.get(index).status();\n            if (status.equals(\"APPROVED\") || status.equals(\"REOPENED\")) {\n                count += 1;\n            }\n        }\n        return count;\n    }\n}\n",
+  "testSupport": "import java.util.Objects;\n\npublic final class TestSupport {\n    private TestSupport() {}\n\n    public static void eq(Object expected, Object actual, String what) {\n        if (!Objects.equals(expected, actual)) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public static void check(boolean condition, String what) {\n        if (!condition) throw new AssertionError(what);\n    }\n\n    public static void near(double expected, double actual, double epsilon, String what) {\n        if (Math.abs(expected - actual) > epsilon) {\n            throw new AssertionError(what + \" | expected <\" + expected + \"> but was <\" + actual + \">\");\n        }\n    }\n\n    public interface Block {\n        void run() throws Exception;\n    }\n\n    public static <T extends Throwable> T throwsType(Class<T> type, Block block, String what) {\n        try {\n            block.run();\n        } catch (Throwable error) {\n            if (type.isInstance(error)) return type.cast(error);\n            throw new AssertionError(what + \" | expected \" + type.getSimpleName()\n                    + \" but got \" + error.getClass().getSimpleName() + \": \" + error.getMessage(), error);\n        }\n        throw new AssertionError(what + \" | expected \" + type.getSimpleName() + \" but nothing was thrown\");\n    }\n}\n",
+  "probes": [
+    {
+      "atMinute": 3,
+      "phase": "implement",
+      "text": "Which claim does the current loop never visit, and what bound would visit it?"
+    },
+    {
+      "atMinute": 3,
+      "phase": "test",
+      "text": "State the root cause in one sentence before you edit the loop."
+    }
+  ],
+  "fallbackProbe": "What is the smallest list that shows the counter ignoring a claim?",
+  "phasePrompts": {
+    "brief": "Read the ticket and the class, then ask me any questions you have. Reproduce the failure before editing.",
+    "implement": "The timer is running. Say which claim the loop skips, then change the bound.",
+    "test": "Run the tests. Confirm the regression test now passes for the reason you predicted.",
+    "change": "Here is the change request. Extend the status check without disturbing the base behaviour.",
+    "debrief": "Time is up. Let us review the diagnosis, the fix, the tests, and the rubric."
+  },
+  "hints": [
+    "Trace the loop bound for a list of two claims: which indexes does it visit?",
+    "The bound subtracts one from size, so the last index is never reached. Remove the subtraction.",
+    "Change only the bound: for (int index = 0; index < claims.size(); index += 1). Keep the status check."
+  ],
+  "rubric": [
+    {
+      "id": "base-tests",
+      "type": "tests",
+      "weight": 35,
+      "criterion": "The fixed counter passes the hidden suite",
+      "strongAnswer": "Every approved claim is counted, including the last one, and non-approved claims are excluded."
+    },
+    {
+      "id": "change-tests",
+      "type": "change",
+      "weight": 20,
+      "criterion": "The reopened-claims change passes the hidden suite",
+      "strongAnswer": "APPROVED and REOPENED claims are counted while CLOSED and other statuses stay out."
+    },
+    {
+      "id": "diagnosis",
+      "type": "diagnosis",
+      "weight": 20,
+      "criterion": "Diagnosis identifies the off-by-one loop bound",
+      "strongAnswer": "Names the size minus one bound, explains why the last claim is skipped, and states the corrected bound."
+    },
+    {
+      "id": "clarify",
+      "type": "clarify",
+      "weight": 15,
+      "criterion": "Clarified reproduction and fix scope",
+      "strongAnswer": "Asked what the ticket reports, how wide the fix should be, and what the follow-up adds."
+    },
+    {
+      "id": "hints",
+      "type": "hints",
+      "weight": 10,
+      "criterion": "Debugged independently",
+      "strongAnswer": "Found the wrong bound with no hints, or after one hint following a genuine attempt."
+    }
+  ]
+}

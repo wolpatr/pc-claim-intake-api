@@ -1,4 +1,4 @@
-const CACHE_NAME = 'interview-sim-v4';
+const CACHE_NAME = 'interview-sim-v5';
 const SHELL = [
   './',
   './index.html',

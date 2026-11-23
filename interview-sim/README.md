@@ -209,7 +209,7 @@ The code editor is still a plain `<textarea>`, so native typing, selection, past
 
 ## Refreshers
 
-`Refreshers` opens from the start screen and from the top bar on every screen. It is static content served from `public/refreshers.mjs` and precached by the service worker, so it needs no network, no JDK, and no AI.
+`Refreshers` opens from the start screen and from the top bar on every screen. It is static content served from `public/refreshers.mjs` and precached by the service worker, so it needs no network, no JDK, and no AI. Opening it during a timed round pauses that round's countdown, and closing it returns you to the same screen with the timer running again only if it was running before.
 
 - **Short lessons** follow a beginner-friendly order inspired by Bro Code's Java full course: variables and data types; operators and expressions; strings; conditionals; loops; arrays; methods; classes and objects; inheritance, polymorphism, and interfaces; collections (ArrayList and HashMap); exceptions; enums; generics. Each lesson has a plain-English explanation, one compact example with its expected output, two to four key points, and links to the relevant method cards.
 - **Common-method cheat sheets** group entries by String, List/ArrayList, Map/HashMap, StringBuilder, Math, Integer, Arrays, Collections, Objects, and Optional. Each entry shows its signature, a one-line description, and a tiny example. The search box filters every group as you type, so a forgotten method such as `isEmpty` is quick to find on a phone.
@@ -220,7 +220,7 @@ The code editor is still a plain `<textarea>`, so native typing, selection, past
 The installable app shell, editor assistance, and refreshers work with no network and no local server.
 
 - After a successful online load, the simulator stores the scenario catalog and each scenario's public projection in `localStorage` under a versioned key. A later offline reload renders the cached start screen and lets you open a scenario and write code.
-- Your editor draft and debugging diagnosis note autosave to `localStorage`, keyed by scenario and phase, so offline-authored work is restored when you reopen the scenario, including after starting the local server and reloading. A system message confirms the restore, `Reset starter` keeps its confirmation, and resetting to the starter replaces the saved draft.
+- Your editor draft and debugging diagnosis note autosave to `localStorage`, keyed by scenario and phase, so offline-authored work is restored into the same phase when you reopen the scenario, including after starting the local server and reloading. A normal start or reload restores the implementation-phase draft, and the change phase restores its own draft when you reach it. A system message confirms the restore, `Reset starter` keeps its confirmation, and resetting to the starter replaces the saved draft. `Retry this scenario` and the recommended next round start from the starter and clear that scenario's saved drafts.
 - In offline mode, `Run tests`, interviewer questions and probes, the debrief, exam start, and progress history are disabled with an inline "needs the local server" message. The editor, writing help, and refreshers stay usable.
 - The service worker cache name is bumped whenever the precached assets change, so installed apps pick up the new shell and refresher module.
 
@@ -229,7 +229,7 @@ The installable app shell, editor assistance, and refreshers work with no networ
 The start screen offers a timed exam beside scenario practice.
 The exam draws 20 unique questions from `quiz/questions.js`, round-robin across the eight topics and randomized within each topic.
 Questions are multiple-choice or true-false, with no hints, no AI interviewer, and no answers or explanations revealed before submission.
-Set the duration before starting; the default is 25 minutes, and the countdown uses active time (it pauses while the exam tab is hidden or when you press Pause).
+Set the duration before starting; the default is 25 minutes, and the countdown uses active time (it pauses while the exam tab is hidden, while Refreshers is open, or when you press Pause).
 
 The exam shows one question at a time with a visible progress count.
 Use Previous and Next to move around, change answers until you submit, and press Submit exam when ready.
@@ -347,7 +347,7 @@ It also checks that the shared quiz bank loads with eight topics and valid quest
 
 It first starts the server on a random port and verifies the installable web app: the manifest's MIME type and fields, the icon PNG sizes, and that the service worker precaches the app shell (including `refreshers.mjs`, `editor-assist.js`, and `draft-store.mjs`), leaves `/api` to the network, and serves the cached shell offline.
 It also loads `public/refreshers.mjs` and checks the lesson structure, the required lesson order, the method-group coverage, and that every method card has a signature, return type, short description, and example.
-It exercises the draft store against a memory-backed storage to confirm that offline-authored code and the diagnosis note survive reopening the scenario, and that missing or corrupt drafts fall back safely.
+It exercises the draft store against a memory-backed storage to confirm that offline-authored code and the diagnosis note survive reopening their own phase, that phases stay isolated, that resetting a scenario clears only its drafts, and that missing or corrupt drafts fall back safely.
 
 It also starts the server with `INTERVIEW_SIM_PUBLIC_URL` set and checks that the public host and origin are accepted, unknown hosts and origins are still rejected, the bare host form works on the default HTTPS port, and every malformed value exits with a single-line error.
 

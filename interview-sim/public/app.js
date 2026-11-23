@@ -1,6 +1,6 @@
 import { criterionThreshold, gradeForPercentage, keywordCoverage } from './scoring.mjs';
 import { createEditorAssist } from './editor-assist.js';
-import { latestDraft, writeDraft } from './draft-store.mjs';
+import { clearDrafts, readDraft, writeDraft } from './draft-store.mjs';
 import { LESSONS, METHOD_GROUPS } from './refreshers.mjs';
 
 const PHASE_SETS = {
@@ -53,6 +53,7 @@ const state = {
   hints: [],
   clarify: { asked: 0, matched: new Set() },
   changeLoaded: false,
+  changeDraftRestored: false,
   savedImplementCode: null,
   baseRun: null,
   changeRun: null,
@@ -540,6 +541,10 @@ function draftTimerId(scenarioId, kind) {
   return `${scenarioId}:${kind}`;
 }
 
+function draftPhaseFor(kind) {
+  return kind === 'editor' && currentPhase() === 'change' ? 'change' : 'implement';
+}
+
 function cancelDraftSave(scenarioId, kind) {
   const id = draftTimerId(scenarioId, kind);
   const entry = draftTimers.get(id);
@@ -559,7 +564,7 @@ function flushDraftSaves() {
 function saveDraftNow(kind, text) {
   const scenarioId = state.scenario?.id;
   if (!scenarioId) return;
-  const phase = currentPhase();
+  const phase = draftPhaseFor(kind);
   cancelDraftSave(scenarioId, kind);
   writeDraft(draftStorage(), scenarioId, phase, kind, text);
 }
@@ -567,7 +572,7 @@ function saveDraftNow(kind, text) {
 function scheduleDraftSave(kind, text) {
   const scenarioId = state.scenario?.id;
   if (!scenarioId) return;
-  const phase = currentPhase();
+  const phase = draftPhaseFor(kind);
   cancelDraftSave(scenarioId, kind);
   const id = draftTimerId(scenarioId, kind);
   const timer = setTimeout(() => {
@@ -577,10 +582,10 @@ function scheduleDraftSave(kind, text) {
   draftTimers.set(id, { timer, scenarioId, phase, kind, text });
 }
 
-function restoredDraft(kind) {
+function restoredDraft(kind, phase) {
   const scenarioId = state.scenario?.id;
   if (!scenarioId) return null;
-  return latestDraft(draftStorage(), scenarioId, kind);
+  return readDraft(draftStorage(), scenarioId, phase, kind);
 }
 
 function applyOfflineUI() {
@@ -812,12 +817,14 @@ function openBriefing(scenario) {
   $('briefingDialog').showModal();
 }
 
-function startSession(scenario, minutes) {
+function startSession(scenario, minutes, { resetDrafts = false } = {}) {
   if (!state.offline && !state.jdk?.available && scenario.roundType !== 'design') {
     showToast('A JDK is required before starting a coding or debugging session.');
     return;
   }
   flushDraftSaves();
+  if (resetDrafts) clearDrafts(draftStorage(), scenario.id);
+  hideRefreshers();
   state.scenario = scenario;
   state.minutes = { ...minutes };
   state.budgets = {};
@@ -838,6 +845,7 @@ function startSession(scenario, minutes) {
   state.hints = [];
   state.clarify = { asked: 0, matched: new Set() };
   state.changeLoaded = false;
+  state.changeDraftRestored = false;
   state.savedImplementCode = null;
   state.baseRun = null;
   state.changeRun = null;
@@ -869,7 +877,7 @@ function startSession(scenario, minutes) {
     ? 'This is a constraint change or extension question, not a code delta. Answer it in your design notes.'
     : 'You can extend the code already in the editor, or load the change-request starter. Your implementation is saved if you switch.';
   $('changeCard').classList.add('hidden');
-  const savedCode = restoredDraft('editor');
+  const savedCode = resetDrafts ? null : restoredDraft('editor', 'implement');
   const restoredCode = savedCode && savedCode.text !== scenario.starterCode ? savedCode.text : null;
   $('editor').value = restoredCode ?? scenario.starterCode;
   applyAssistForRound(scenario.roundType);
@@ -879,7 +887,7 @@ function startSession(scenario, minutes) {
   $('reproductionNote').textContent = scenario.reproductionNote || '';
   $('diagnosisCard').classList.toggle('hidden', scenario.roundType !== 'debugging');
   $('diagnosisTitle').textContent = scenario.diagnosis?.prompt || 'Explain the root cause in your own words.';
-  const savedDiagnosis = scenario.roundType === 'debugging' ? restoredDraft('diagnosis') : null;
+  const savedDiagnosis = scenario.roundType === 'debugging' && !resetDrafts ? restoredDraft('diagnosis', 'implement') : null;
   const restoredDiagnosis = savedDiagnosis?.text ? savedDiagnosis.text : null;
   $('diagnosisInput').value = restoredDiagnosis || '';
   state.diagnosisText = restoredDiagnosis || '';
@@ -1107,6 +1115,17 @@ function jumpToPhase(index) {
   }
 
   state.running = true;
+  if (key === 'change' && !state.changeDraftRestored) {
+    state.changeDraftRestored = true;
+    const savedChange = restoredDraft('editor', 'change');
+    if (savedChange && savedChange.text !== $('editor').value) {
+      state.savedImplementCode = $('editor').value;
+      $('editor').value = savedChange.text;
+      state.changeLoaded = true;
+      $('restoreCodeBtn').classList.remove('hidden');
+      if (assist) assist.close();
+    }
+  }
   if (key === 'change') {
     const design = state.scenario.roundType === 'design';
     const detail = design
@@ -1902,13 +1921,13 @@ function retryScenario() {
   if (!state.scenario) return;
   const scenario = state.scenario;
   const minutes = { ...state.minutes };
-  startSession(scenario, minutes);
+  startSession(scenario, minutes, { resetDrafts: true });
 }
 
 function startRecommended() {
   const next = recommendNext();
   if (!next) return;
-  startSession(next, next.phaseTimes);
+  startSession(next, next.phaseTimes, { resetDrafts: true });
 }
 
 function endScenarioSession() {
@@ -1921,6 +1940,7 @@ function endScenarioSession() {
   cancelSpeech();
   setDictationStatus('');
   if (assist) assist.close();
+  hideRefreshers();
   $('sessionScreen').classList.add('hidden');
   $('setupScreen').classList.remove('hidden');
   $('exitBtn').classList.add('hidden');
@@ -2112,6 +2132,7 @@ async function startExam({ ids = null, minutes = 25 } = {}) {
     ? 'Only the questions you missed last time. Answer each one, then submit.'
     : 'Answer every question, then submit. Answers stay hidden until the report.';
   $('examTimerNote').textContent = '';
+  hideRefreshers();
   $('setupScreen').classList.add('hidden');
   $('sessionScreen').classList.add('hidden');
   $('examScreen').classList.remove('hidden');
@@ -2181,6 +2202,7 @@ async function submitExam({ timedOut = false } = {}) {
     }
     if (token !== exam.token) return;
     renderExamReport(report, { timedOut: exam.timedOut });
+    hideRefreshers();
     $('examResultAnnouncement').textContent = '';
     $('examReportDialog').showModal();
     $('examResultAnnouncement').textContent = exam.summaryText;
@@ -2298,6 +2320,7 @@ function renderExamReport(report, { timedOut = false } = {}) {
 
 function exitExam() {
   cancelSpeech();
+  hideRefreshers();
   if (!exam.active) {
     $('examReportDialog').close();
     return;
@@ -2453,10 +2476,40 @@ function renderHistory(records) {
 
 let refreshersReady = false;
 let methodTotal = 0;
+let refreshersReturn = null;
+
+function refreshersVisible() {
+  return !$('refreshersScreen').classList.contains('hidden');
+}
+
+function hideRefreshers() {
+  $('refreshersScreen').classList.add('hidden');
+  refreshersReturn = null;
+}
 
 function openRefreshers() {
   cancelSpeech();
   if (assist) assist.close();
+  if (!refreshersVisible()) {
+    refreshersReturn = {
+      screen: exam.active ? 'exam' : state.active ? 'session' : 'setup',
+      debriefOpen: $('debriefDialog').open,
+      reportOpen: $('examReportDialog').open,
+      sessionRunning: state.running,
+      examRunning: exam.running,
+    };
+    if (state.active && state.running) {
+      state.running = false;
+      state.lastTick = performance.now();
+      renderPhaseUI();
+      renderTimer();
+    }
+    if (exam.active && exam.running) {
+      exam.running = false;
+      exam.lastTick = performance.now();
+      renderExamNav();
+    }
+  }
   $('setupScreen').classList.add('hidden');
   $('sessionScreen').classList.add('hidden');
   $('examScreen').classList.add('hidden');
@@ -2466,15 +2519,30 @@ function openRefreshers() {
 }
 
 function closeRefreshers() {
+  const snapshot = refreshersReturn;
+  refreshersReturn = null;
+  const target = snapshot?.screen || (exam.active ? 'exam' : state.active ? 'session' : 'setup');
   $('refreshersScreen').classList.add('hidden');
-  if (exam.active) {
-    $('examScreen').classList.remove('hidden');
-  } else if (state.active) {
-    $('sessionScreen').classList.remove('hidden');
-  } else {
-    $('setupScreen').classList.remove('hidden');
-  }
+  $('setupScreen').classList.toggle('hidden', target !== 'setup');
+  $('sessionScreen').classList.toggle('hidden', target !== 'session');
+  $('examScreen').classList.toggle('hidden', target !== 'exam');
   $('exitBtn').classList.toggle('hidden', !state.active || exam.active);
+  if (snapshot?.debriefOpen && !$('debriefDialog').open) $('debriefDialog').showModal();
+  if (snapshot?.reportOpen && !$('examReportDialog').open) $('examReportDialog').showModal();
+  if (state.active && snapshot?.sessionRunning && !document.hidden && currentPhase() !== 'debrief') {
+    state.running = true;
+    state.lastTick = performance.now();
+    renderPhaseUI();
+    renderTimer();
+  }
+  if (exam.active && !exam.submitted && snapshot?.examRunning && !document.hidden) {
+    exam.running = true;
+    exam.manualPause = false;
+    exam.pausedByVisibility = false;
+    exam.lastTick = performance.now();
+    $('examTimerNote').textContent = '';
+    renderExamNav();
+  }
 }
 
 function renderRefreshers() {

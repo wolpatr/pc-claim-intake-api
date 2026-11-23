@@ -186,6 +186,27 @@ function findMatching(text, openIndex, open, close) {
   return -1;
 }
 
+function maskNestedBlocks(body) {
+  let out = '';
+  let depth = 0;
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+    if (char === '{') {
+      out += depth === 0 ? char : ' ';
+      depth += 1;
+      continue;
+    }
+    if (char === '}') {
+      depth = Math.max(0, depth - 1);
+      out += depth === 0 ? char : ' ';
+      continue;
+    }
+    if (depth === 0) out += char;
+    else out += char === '\n' ? '\n' : ' ';
+  }
+  return out;
+}
+
 function baseTypeName(type) {
   if (!type) return '';
   return String(type).replace(/<.*>/g, '').replace(/\s+/g, ' ').trim();
@@ -258,8 +279,11 @@ function collectModel(source) {
     if (bodyStart !== -1) {
       const bodyEnd = findMatching(clean, bodyStart, '{', '}');
       if (bodyEnd !== -1) {
-        const body = clean.slice(bodyStart + 1, bodyEnd);
-        const fieldPattern = /(?:^|[;{}]\s*)(?:(?:public|private|protected|static|final|transient|volatile)\s+)*([A-Za-z_$][\w$.]*(?:\s*<[^;{}()]*>)?(?:\[\])*)\s+([A-Za-z_$][\w$]*)\s*(?==|;)/gm;
+        const body = maskNestedBlocks(clean.slice(bodyStart + 1, bodyEnd));
+        const fieldPattern = new RegExp(
+          `(?:^|[;{}])\\s*(?:(?:public|private|protected|static|final|transient|volatile)\\s+)*(${typePattern})\\s+([A-Za-z_$][\\w$]*)\\s*(?==|;)`,
+          'gm',
+        );
         for (const field of body.matchAll(fieldPattern)) {
           members.set(field[2], {
             name: field[2],
@@ -269,7 +293,10 @@ function collectModel(source) {
             description: `Field declared in ${name}.`,
           });
         }
-        const methodPattern = /(?:^|[;{}]\s*)(?:(?:public|private|protected|static|final|abstract|synchronized|native|default)\s+)*([A-Za-z_$][\w$.]*(?:\s*<[^;{}()]*>)?(?:\[\])*|void)\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*(?:throws\s+[^{]+)?\{/gm;
+        const methodPattern = new RegExp(
+          `(?:^|[;{}])\\s*(?:(?:public|private|protected|static|final|abstract|synchronized|native|default)\\s+)*(${typePattern})\\s+([A-Za-z_$][\\w$]*)\\s*\\(([^)]*)\\)\\s*(?:throws\\s+[^{]+)?\\{`,
+          'gm',
+        );
         for (const method of body.matchAll(methodPattern)) {
           const returnType = method[1].replace(/\s+/g, ' ');
           const params = method[3].trim();
@@ -883,14 +910,8 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
 
   return {
     handleKeyDown,
-    trigger,
     close,
     setEnabled,
     isEnabled: () => enabled,
-    isVisible,
-    destroy() {
-      close();
-      editor.removeEventListener('input', onInput);
-    },
   };
 }

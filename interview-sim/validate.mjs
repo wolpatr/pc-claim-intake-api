@@ -15,7 +15,7 @@ import {
 } from './lib/java.mjs';
 import { criterionThreshold, gradeForPercentage, keywordCoverage } from './public/scoring.mjs';
 import { LESSONS, METHOD_GROUPS } from './public/refreshers.mjs';
-import { latestDraft, readDraft, writeDraft } from './public/draft-store.mjs';
+import { clearDrafts, readDraft, writeDraft } from './public/draft-store.mjs';
 import {
   DEFAULT_EXAM_COUNT,
   loadQuizBank,
@@ -1035,52 +1035,71 @@ function validateRefresherChecks() {
 }
 
 function validateDraftPersistenceChecks() {
-  const memory = new Map();
-  const createStorage = () => ({
-    get length() { return memory.size; },
-    key: (index) => [...memory.keys()][index] ?? null,
-    getItem: (key) => (memory.has(key) ? memory.get(key) : null),
-    setItem: (key, value) => { memory.set(String(key), String(value)); },
-    removeItem: (key) => { memory.delete(key); },
-  });
+  const createStorage = (entries = []) => {
+    const memory = new Map(entries);
+    return {
+      get length() { return memory.size; },
+      key: (index) => [...memory.keys()][index] ?? null,
+      getItem: (key) => (memory.has(key) ? memory.get(key) : null),
+      setItem: (key, value) => { memory.set(String(key), String(value)); },
+      removeItem: (key) => { memory.delete(key); },
+      entries: () => [...memory.entries()],
+    };
+  };
   const storage = createStorage();
   const offlineCode = 'class Intake {\n  int reviewed = 0;\n}';
+  const changeCode = 'class Intake {\n  int reviewed = 0;\n  int pending = 0;\n}';
   record(
     writeDraft(storage, 'reload-demo', 'implement', 'editor', offlineCode),
     'draft store saves the editor draft for a phase',
   );
-  const reloaded = createStorage();
+  writeDraft(storage, 'reload-demo', 'change', 'editor', changeCode);
+  const reopened = createStorage(storage.entries());
   record(
-    readDraft(reloaded, 'reload-demo', 'implement', 'editor')?.text === offlineCode,
+    readDraft(reopened, 'reload-demo', 'implement', 'editor')?.text === offlineCode,
     'offline-authored code survives reopening the same phase',
   );
   record(
-    latestDraft(reloaded, 'reload-demo', 'editor')?.text === offlineCode,
-    'reopening the scenario restores the saved code across phases',
+    readDraft(reopened, 'reload-demo', 'change', 'editor')?.text === changeCode,
+    'each phase keeps its own saved draft',
   );
   record(
-    readDraft(reloaded, 'reload-demo', 'brief', 'editor') === null,
+    readDraft(reopened, 'reload-demo', 'brief', 'editor') === null,
     'no saved draft falls back to the starter',
   );
   const diagnosis = 'The null check is missing before the map lookup.';
-  writeDraft(reloaded, 'reload-demo', 'implement', 'diagnosis', diagnosis);
+  writeDraft(reopened, 'reload-demo', 'implement', 'diagnosis', diagnosis);
   record(
-    latestDraft(reloaded, 'reload-demo', 'diagnosis')?.text === diagnosis,
+    readDraft(reopened, 'reload-demo', 'implement', 'diagnosis')?.text === diagnosis,
     'the debugging diagnosis note restores with the same mechanism',
   );
   record(
-    latestDraft(reloaded, 'reload-demo', 'editor')?.text === offlineCode,
+    readDraft(reopened, 'reload-demo', 'implement', 'editor')?.text === offlineCode,
     'the diagnosis draft does not replace the editor draft',
   );
-  memory.set('interview-sim.draft.v1:reload-demo:test:editor', '{not json');
-  record(readDraft(reloaded, 'reload-demo', 'test', 'editor') === null, 'a corrupt draft is ignored');
+  record(
+    clearDrafts(reopened, 'reload-demo') === true &&
+      readDraft(reopened, 'reload-demo', 'implement', 'editor') === null &&
+      readDraft(reopened, 'reload-demo', 'change', 'editor') === null &&
+      readDraft(reopened, 'reload-demo', 'implement', 'diagnosis') === null,
+    'resetting a scenario clears all of its stored drafts',
+  );
+  const other = createStorage();
+  writeDraft(other, 'other-scenario', 'implement', 'editor', offlineCode);
+  record(
+    clearDrafts(other, 'reload-demo') === true &&
+      readDraft(other, 'other-scenario', 'implement', 'editor')?.text === offlineCode,
+    'clearing one scenario keeps drafts for the others',
+  );
+  other.setItem('interview-sim.draft.v1:reload-demo:test:editor', '{not json');
+  record(readDraft(other, 'reload-demo', 'test', 'editor') === null, 'a corrupt draft is ignored');
   record(
     writeDraft(null, 'reload-demo', 'implement', 'editor', offlineCode) === false,
     'unavailable storage never throws when saving',
   );
   record(
     readDraft(null, 'reload-demo', 'implement', 'editor') === null &&
-      latestDraft(null, 'reload-demo', 'editor') === null,
+      clearDrafts(null, 'reload-demo') === false,
     'unavailable storage never throws when restoring',
   );
 }

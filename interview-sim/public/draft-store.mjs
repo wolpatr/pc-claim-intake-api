@@ -42,21 +42,18 @@ export function writeDraft(storage, scenarioId, phase, kind, text) {
   }
 }
 
-export function latestDraft(storage, scenarioId, kind) {
-  if (!storage) return null;
+export function clearDrafts(storage, scenarioId) {
+  if (!storage) return false;
   const prefix = `${DRAFT_PREFIX}:${encodeURIComponent(scenarioId)}:`;
-  const suffix = `:${kind}`;
   try {
-    let best = null;
+    const keys = [];
     for (let index = 0; index < storage.length; index += 1) {
       const key = storage.key(index);
-      if (typeof key !== 'string' || !key.startsWith(prefix) || !key.endsWith(suffix)) continue;
-      const entry = parseDraft(storage.getItem(key));
-      if (!entry) continue;
-      if (!best || entry.savedAt >= best.savedAt) best = entry;
+      if (typeof key === 'string' && key.startsWith(prefix)) keys.push(key);
     }
-    return best;
+    for (const key of keys) storage.removeItem(key);
+    return true;
   } catch {
-    return null;
+    return false;
   }
 }

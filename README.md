@@ -66,8 +66,8 @@ multiple-choice exam mode and voice controls, lives in
 [`interview-sim/`](interview-sim/README.md). It runs your code locally, interrupts with probes,
 adds a change or constraint request, and scores a debrief. Start it with
 `node interview-sim/server.mjs` and open http://127.0.0.1:4321. It can also be
-served over Wi-Fi and installed as an app on Android; see the interview simulator
-README for the HTTPS and LAN steps.
+served over Wi-Fi or over Tailscale and installed as an app on Android; see the interview simulator
+README for the HTTPS, LAN, and Tailscale steps.
 
 ## Stack
 

@@ -51,6 +51,36 @@ const formatHost = (host) => (isIP(host) === 6 ? `[${host}]` : host);
 const URL_HOST = formatHost(LAN_ENABLED ? LAN_HOST : LOCAL_HOST);
 const BASE_URL = `${SCHEME}://${URL_HOST}:${PORT}`;
 
+function parsePublicUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const reject = (reason) => {
+    throw new Error(`INTERVIEW_SIM_PUBLIC_URL ${reason}. Use an https origin such as https://<machine>.<tailnet>.ts.net:8443`);
+  };
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    reject('is not a valid URL');
+  }
+  if (parsed.protocol !== 'https:') reject('must start with https://');
+  if (!parsed.hostname) reject('must include a hostname');
+  if (parsed.username || parsed.password) reject('must not include credentials');
+  if (parsed.search) reject('must not include a query string');
+  if (parsed.hash) reject('must not include a fragment');
+  if (parsed.pathname !== '/') reject('must not include a path');
+  return parsed;
+}
+
+let PUBLIC_URL = null;
+try {
+  PUBLIC_URL = parsePublicUrl(process.env.INTERVIEW_SIM_PUBLIC_URL);
+} catch (error) {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.exit(1);
+}
+const DISPLAY_URL = PUBLIC_URL ? PUBLIC_URL.origin : BASE_URL;
+
 const DEFAULT_PORT = HTTPS_ENABLED ? 443 : 80;
 const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
 const ALLOWED_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
@@ -77,6 +107,11 @@ if (LAN_ENABLED) {
     ALLOWED_HOSTS.add(URL_HOST.toLowerCase());
     ALLOWED_ORIGINS.add(`${SCHEME}://${URL_HOST}`.toLowerCase());
   }
+}
+if (PUBLIC_URL) {
+  ALLOWED_HOSTS.add(PUBLIC_URL.host.toLowerCase());
+  ALLOWED_ORIGINS.add(PUBLIC_URL.origin.toLowerCase());
+  if (!PUBLIC_URL.port) ALLOWED_HOSTS.add(PUBLIC_URL.hostname.toLowerCase());
 }
 
 function isAllowedHost(hostHeader) {
@@ -554,7 +589,10 @@ const ai = aiStatus();
 
 server.listen(PORT, HOST, () => {
   loadScenarios();
-  process.stdout.write(`Interview simulator: ${BASE_URL}\n`);
+  process.stdout.write(`Interview simulator: ${DISPLAY_URL}\n`);
+  if (PUBLIC_URL) {
+    process.stdout.write(`Public origin: ${PUBLIC_URL.origin} (proxied to ${HOST}:${PORT}; Tailscale Serve terminates TLS)\n`);
+  }
   if (LAN_ENABLED) {
     process.stdout.write(`LAN mode: enabled (bound to ${HOST})\n`);
     if (HTTPS_ENABLED && tls && tls.generated) {

@@ -31,7 +31,7 @@ There is no build step, no bundler, and no CDN asset.
 
 ## Install on Android
 
-Android installs a web app only from a secure context. An `https://` origin qualifies, and so does `http://localhost`, but a plain HTTP address on the LAN does not. Choose one of the two paths below.
+Android installs a web app only from a secure context. An `https://` origin qualifies, and so does `http://localhost`, but a plain HTTP address on the LAN does not. Choose one of the two LAN paths below, or use the Tailscale path in [Run from your phone over Tailscale](#run-from-your-phone-over-tailscale).
 
 ### Path A: LAN + HTTPS (recommended, full app install)
 
@@ -87,9 +87,10 @@ powershell -ExecutionPolicy Bypass -File interview-sim\scripts\start-tailscale.p
 The script:
 
 - checks that `tailscale` is on PATH and the backend is running, then reads this node's DNS name and Tailscale IPv4 at runtime;
+- checks that the local simulator port (4321 by default) is free, and stops before touching Serve if it is not;
 - reads `tailscale serve status --json` and stops without changing anything if HTTPS port 8443 already points at something other than `http://127.0.0.1:4321`;
 - otherwise adds only `https://<machine>.<tailnet>.ts.net:8443 -> http://127.0.0.1:4321` and prints what it added;
-- checks that port 4321 is free, then starts `node interview-sim/server.mjs` with `INTERVIEW_SIM_PUBLIC_URL` set to the printed HTTPS origin.
+- starts `node interview-sim/server.mjs` with `INTERVIEW_SIM_PUBLIC_URL` set to the printed HTTPS origin.
 
 3. Open the printed `https://<machine>.<tailnet>.ts.net:8443` URL on the phone. Chrome shows a valid secure origin. Open the menu and choose **Install app**.
 4. Keep the PC awake and the server window running while you practice. Access is limited to the tailnet.
@@ -315,6 +316,8 @@ It checks the schema per round type, unique ids, non-empty rubrics and weights, 
 It also checks that the shared quiz bank loads with eight topics and valid questions, that a standard exam selects 20 unique answer-free questions balanced across topics, that a focused selection returns exactly the requested ids, and that exam scoring and the tailored plan follow the documented rules.
 
 It first starts the server on a random port and verifies the installable web app: the manifest's MIME type and fields, the icon PNG sizes, and that the service worker precaches the app shell, leaves `/api` to the network, and serves the cached shell offline.
+
+It also starts the server with `INTERVIEW_SIM_PUBLIC_URL` set and checks that the public host and origin are accepted, unknown hosts and origins are still rejected, the bare host form works on the default HTTPS port, and every malformed value exits with a single-line error.
 
 ## Progress and history
 

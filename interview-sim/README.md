@@ -220,6 +220,7 @@ The code editor is still a plain `<textarea>`, so native typing, selection, past
 The installable app shell, editor assistance, and refreshers work with no network and no local server.
 
 - After a successful online load, the simulator stores the scenario catalog and each scenario's public projection in `localStorage` under a versioned key. A later offline reload renders the cached start screen and lets you open a scenario and write code.
+- Your editor draft and debugging diagnosis note autosave to `localStorage`, keyed by scenario and phase, so offline-authored work is restored when you reopen the scenario, including after starting the local server and reloading. A system message confirms the restore, `Reset starter` keeps its confirmation, and resetting to the starter replaces the saved draft.
 - In offline mode, `Run tests`, interviewer questions and probes, the debrief, exam start, and progress history are disabled with an inline "needs the local server" message. The editor, writing help, and refreshers stay usable.
 - The service worker cache name is bumped whenever the precached assets change, so installed apps pick up the new shell and refresher module.
 
@@ -344,8 +345,9 @@ node interview-sim/validate.mjs
 It checks the schema per round type, unique ids, non-empty rubrics and weights, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, the required scenario mix (at least 12 scenarios, 2 debugging and 2 design), that every code starter compiles and fails before completion, that each debugging regression test fails on the broken starter, that every reference solution passes both hidden suites, and that each design criterion's strong answer and reference design, plus each debugging diagnosis's strong answer, clear their evidence thresholds.
 It also checks that the shared quiz bank loads with eight topics and valid questions, that a standard exam selects 20 unique answer-free questions balanced across topics, that a focused selection returns exactly the requested ids, and that exam scoring and the tailored plan follow the documented rules.
 
-It first starts the server on a random port and verifies the installable web app: the manifest's MIME type and fields, the icon PNG sizes, and that the service worker precaches the app shell (including `refreshers.mjs` and `editor-assist.js`), leaves `/api` to the network, and serves the cached shell offline.
+It first starts the server on a random port and verifies the installable web app: the manifest's MIME type and fields, the icon PNG sizes, and that the service worker precaches the app shell (including `refreshers.mjs`, `editor-assist.js`, and `draft-store.mjs`), leaves `/api` to the network, and serves the cached shell offline.
 It also loads `public/refreshers.mjs` and checks the lesson structure, the required lesson order, the method-group coverage, and that every method card has a signature, return type, short description, and example.
+It exercises the draft store against a memory-backed storage to confirm that offline-authored code and the diagnosis note survive reopening the scenario, and that missing or corrupt drafts fall back safely.
 
 It also starts the server with `INTERVIEW_SIM_PUBLIC_URL` set and checks that the public host and origin are accepted, unknown hosts and origins are still rejected, the bare host form works on the default HTTPS port, and every malformed value exits with a single-line error.
 
@@ -384,6 +386,7 @@ interview-sim/
     index.html          single-page UI
     app.js              session flow, timer, chat, scoring, refreshers UI, offline cache
     editor-assist.js    completion popup, type inference, auto-close, live templates
+    draft-store.mjs     versioned localStorage drafts for the editor and diagnosis note
     refreshers.mjs      static lessons and common-method cheat-sheet data
     scoring.mjs         keyword evidence helpers shared by app.js and validate.mjs
     styles.css          local styling, no external assets

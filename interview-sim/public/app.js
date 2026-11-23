@@ -1,5 +1,6 @@
 import { criterionThreshold, gradeForPercentage, keywordCoverage } from './scoring.mjs';
 import { createEditorAssist } from './editor-assist.js';
+import { latestDraft, writeDraft } from './draft-store.mjs';
 import { LESSONS, METHOD_GROUPS } from './refreshers.mjs';
 
 const PHASE_SETS = {
@@ -101,7 +102,8 @@ const AUTO_SPEAK_KEY = 'interview-sim.auto-speak';
 const ASSIST_KEY = 'interview-sim.editor-assist';
 const ASSIST_DESIGN_KEY = 'interview-sim.editor-assist.design';
 const SCENARIO_CACHE_KEY = 'interview-sim.cache.scenarios.v1';
-const OFFLINE_MESSAGE = 'Needs the local server. Start it with node interview-sim/server.mjs and reload.';
+const DRAFT_SAVE_DELAY = 400;
+const OFFLINE_MESSAGE = 'Needs the local server. Your draft is saved automatically and restored after a reload; start it with node interview-sim/server.mjs and reload.';
 const voice = {
   autoSpeak: false,
   recognition: null,
@@ -524,12 +526,59 @@ function writeScenarioCache(scenarios) {
   } catch {}
 }
 
+const draftTimers = new Map();
+
+function draftStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function draftTimerId(scenarioId, phase, kind) {
+  return `${scenarioId}:${phase}:${kind}`;
+}
+
+function cancelDraftSave(id) {
+  const timer = draftTimers.get(id);
+  if (!timer) return;
+  clearTimeout(timer);
+  draftTimers.delete(id);
+}
+
+function saveDraftNow(kind, text) {
+  const scenarioId = state.scenario?.id;
+  if (!scenarioId) return;
+  const phase = currentPhase();
+  cancelDraftSave(draftTimerId(scenarioId, phase, kind));
+  writeDraft(draftStorage(), scenarioId, phase, kind, text);
+}
+
+function scheduleDraftSave(kind, text) {
+  const scenarioId = state.scenario?.id;
+  if (!scenarioId) return;
+  const phase = currentPhase();
+  const id = draftTimerId(scenarioId, phase, kind);
+  cancelDraftSave(id);
+  draftTimers.set(id, setTimeout(() => {
+    draftTimers.delete(id);
+    writeDraft(draftStorage(), scenarioId, phase, kind, text);
+  }, DRAFT_SAVE_DELAY));
+}
+
+function restoredDraft(kind) {
+  const scenarioId = state.scenario?.id;
+  if (!scenarioId) return null;
+  return latestDraft(draftStorage(), scenarioId, kind);
+}
+
 function applyOfflineUI() {
   const banner = $('offlineBanner');
   if (banner) {
     banner.classList.toggle('hidden', !state.offline);
     if (state.offline) {
-      banner.textContent = 'Offline mode. Refreshers, lessons, and the editor work without a server. Run tests, the interviewer, exams, and history need the local server.';
+      banner.textContent = 'Offline mode. Refreshers, lessons, and the editor work without a server, and your draft is saved automatically and restored when you reload online. Run tests, the interviewer, exams, and history need the local server.';
     }
   }
   const history = $('historyBtn');
@@ -603,7 +652,7 @@ function renderStatus() {
     aiChip.className = 'chip';
     $('jdkWarning').classList.add('hidden');
     $('installSteps').innerHTML = '';
-    $('aiModeNote').textContent = 'Offline mode: cached scenarios, the editor, and refreshers work. Start the local server and reload to run tests, ask the interviewer, take an exam, or view history.';
+    $('aiModeNote').textContent = 'Offline mode: cached scenarios, the editor, and refreshers work, and your draft is saved automatically. Start the local server and reload to run tests, ask the interviewer, take an exam, or view history; the draft is restored.';
     $('scenarioCount').textContent = String(state.scenarios.length || 0);
     return;
   }
@@ -741,7 +790,7 @@ function openBriefing(scenario) {
     ? 'Start offline session'
     : state.jdk?.available || design ? 'Start session' : 'Install a JDK first';
   $('briefJdkNote').textContent = state.offline
-    ? 'Offline: the editor, writing help, and refreshers work. Running tests, the interviewer, the debrief, exams, and history need the local server.'
+    ? 'Offline: the editor, writing help, and refreshers work, and your draft is saved automatically and restored after a reload. Running tests, the interviewer, the debrief, exams, and history need the local server.'
     : design
       ? (state.jdk?.available
         ? `Detected ${state.jdk.version} via ${state.jdk.source}. A class sketch is compiled as an informational signal; design notes are enough.`
@@ -809,7 +858,9 @@ function startSession(scenario, minutes) {
     ? 'This is a constraint change or extension question, not a code delta. Answer it in your design notes.'
     : 'You can extend the code already in the editor, or load the change-request starter. Your implementation is saved if you switch.';
   $('changeCard').classList.add('hidden');
-  $('editor').value = scenario.starterCode;
+  const savedCode = restoredDraft('editor');
+  const restoredCode = savedCode && savedCode.text !== scenario.starterCode ? savedCode.text : null;
+  $('editor').value = restoredCode ?? scenario.starterCode;
   applyAssistForRound(scenario.roundType);
   if (assist) assist.close();
 
@@ -817,7 +868,10 @@ function startSession(scenario, minutes) {
   $('reproductionNote').textContent = scenario.reproductionNote || '';
   $('diagnosisCard').classList.toggle('hidden', scenario.roundType !== 'debugging');
   $('diagnosisTitle').textContent = scenario.diagnosis?.prompt || 'Explain the root cause in your own words.';
-  $('diagnosisInput').value = '';
+  const savedDiagnosis = scenario.roundType === 'debugging' ? restoredDraft('diagnosis') : null;
+  const restoredDiagnosis = savedDiagnosis?.text ? savedDiagnosis.text : null;
+  $('diagnosisInput').value = restoredDiagnosis || '';
+  state.diagnosisText = restoredDiagnosis || '';
   $('diagnosisInput').disabled = false;
   $('designCard').classList.toggle('hidden', scenario.roundType !== 'design');
   const constraints = $('designConstraints');
@@ -855,7 +909,13 @@ function startSession(scenario, minutes) {
   addMessage('interviewer', scenario.intro, { meta: 'Opening' });
   addMessage('interviewer', scenario.phasePrompts.brief, { meta: phasesFor(scenario.roundType)[0].label });
   if (state.offline) {
-    addMessage('system', 'Offline mode: the editor, writing help, and refreshers work. Test runs, interviewer answers, and the debrief need the local server.');
+    addMessage('system', 'Offline mode: the editor, writing help, and refreshers work, and your draft is saved automatically. Test runs, interviewer answers, and the debrief need the local server; reload once it is running and the draft is restored.');
+  }
+  if (restoredCode) {
+    addMessage('system', 'Restored your saved draft for this scenario. It autosaves as you type.');
+  }
+  if (restoredDiagnosis) {
+    addMessage('system', 'Restored your saved diagnosis note.');
   }
   updateClarifyCounter();
   updateHintButton();
@@ -1201,6 +1261,7 @@ function loadChangeStarter() {
     state.savedImplementCode = $('editor').value;
   }
   $('editor').value = state.scenario.changeRequest.starterCode;
+  saveDraftNow('editor', $('editor').value);
   if (assist) assist.close();
   state.changeLoaded = true;
   $('restoreCodeBtn').classList.remove('hidden');
@@ -1210,6 +1271,7 @@ function loadChangeStarter() {
 function restoreCode() {
   if (!state.savedImplementCode) return;
   $('editor').value = state.savedImplementCode;
+  saveDraftNow('editor', $('editor').value);
   if (assist) assist.close();
   state.changeLoaded = false;
   $('restoreCodeBtn').classList.add('hidden');
@@ -1222,9 +1284,10 @@ function resetCode() {
   const source = useChange ? state.scenario.changeRequest.starterCode : state.scenario.starterCode;
   if (!window.confirm('Replace the editor contents with the starter code?')) return;
   $('editor').value = source;
+  saveDraftNow('editor', $('editor').value);
   if (assist) assist.close();
   state.changeLoaded = Boolean(useChange);
-  addMessage('system', 'Editor reset to the starter code.');
+  addMessage('system', 'Editor reset to the starter code. The starter replaces the saved draft.');
 }
 
 async function runTests() {
@@ -1547,7 +1610,7 @@ async function openDebrief() {
     renderTimer();
     $('debriefTitle').textContent = `${state.scenario.title} · debrief`;
     $('debriefBody').innerHTML = `<p class="compile-fail">${OFFLINE_MESSAGE}</p>
-      <p class="muted">Your code stays in the editor. Start the local server and reload to run the hidden tests and score this session.</p>`;
+      <p class="muted">Your code and diagnosis note are saved automatically. Start the local server and reload; your draft is restored so you can run the hidden tests and score this session.</p>`;
     $('debriefDialog').showModal();
     return;
   }
@@ -1854,7 +1917,7 @@ function endScenarioSession() {
 
 function exitSession() {
   if (!state.active) return;
-  if (!window.confirm('Leave this session? Only a completed debrief is saved to local progress.')) return;
+  if (!window.confirm('Leave this session? Your draft is saved automatically; only a completed debrief is saved to local progress.')) return;
   endScenarioSession();
 }
 
@@ -2000,7 +2063,7 @@ async function startExam({ ids = null, minutes = 25 } = {}) {
   }
 
   if (state.active) {
-    if (!window.confirm('Leave this session? Only a completed debrief is saved to local progress.')) return;
+    if (!window.confirm('Leave this session? Your draft is saved automatically; only a completed debrief is saved to local progress.')) return;
     endScenarioSession();
   }
 
@@ -2618,6 +2681,11 @@ function bindEvents() {
   $('resetCodeBtn').addEventListener('click', resetCode);
   $('diagnosisInput').addEventListener('input', (event) => {
     state.diagnosisText = event.target.value;
+    if (state.active) scheduleDraftSave('diagnosis', event.target.value);
+  });
+
+  $('editor').addEventListener('input', () => {
+    if (state.active) scheduleDraftSave('editor', $('editor').value);
   });
 
   $('assistToggle').addEventListener('click', () => {

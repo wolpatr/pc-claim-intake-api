@@ -467,7 +467,6 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
   let range = { start: 0, end: 0 };
   let compositionActive = false;
   let suppressNextInput = false;
-  let lastTrigger = null;
 
   const isVisible = () => !popup.classList.contains('hidden');
 
@@ -486,7 +485,6 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
     if (!options.length && !isVisible()) return;
     options = [];
     selected = 0;
-    lastTrigger = null;
     popup.classList.add('hidden');
     popup.innerHTML = '';
     editor.setAttribute('aria-expanded', 'false');
@@ -565,7 +563,7 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
     }
   }
 
-  function render(suggestions, token) {
+  function render(suggestions) {
     options = suggestions;
     selected = 0;
     popup.innerHTML = '';
@@ -614,7 +612,6 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
     editor.setAttribute('aria-expanded', 'true');
     updateSelection();
     positionPopup();
-    lastTrigger = token;
     notify();
   }
 
@@ -644,33 +641,35 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
     }
     const before = value.slice(0, start);
     const model = collectModel(value);
+    const tokenMatch = before.match(/[A-Za-z_$][\w$]*$/);
+    const token = tokenMatch ? tokenMatch[0] : '';
+    const receiverEnd = before.length - token.length;
 
-    if (before.endsWith('.')) {
-      const receiverType = resolveReceiverType(before.slice(0, -1), model);
-      range = { start, end: start };
+    if (before[receiverEnd - 1] === '.') {
+      const receiverType = resolveReceiverType(before.slice(0, receiverEnd - 1), model);
+      range = { start: receiverEnd, end: start };
       if (!receiverType) {
         close();
         return;
       }
-      const suggestions = filterList(dedupe(memberSuggestions(receiverType, model)), '');
-      render(suggestions, '');
+      const suggestions = filterList(dedupe(memberSuggestions(receiverType, model)), token);
+      render(suggestions);
       return;
     }
 
-    const tokenMatch = before.match(/[A-Za-z_$][\w$]*$/);
-    if (!tokenMatch || tokenMatch[0].length < 2) {
+    if (!tokenMatch || token.length < 2) {
       close();
       return;
     }
-    const token = tokenMatch[0];
     range = { start: start - token.length, end: start };
     const suggestions = filterList(dedupe(generalSuggestions(model)), token);
-    render(suggestions, token);
+    render(suggestions);
   }
 
   function handleKeyDown(event) {
     if (event.isComposing || compositionActive) return false;
     const key = event.key;
+    if (event.ctrlKey || event.metaKey || event.altKey) return false;
 
     if (isVisible()) {
       if (key === 'ArrowDown' || key === 'ArrowUp') {
@@ -697,7 +696,6 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
     }
 
     if (!enabled) return false;
-    if (event.ctrlKey || event.metaKey || event.altKey) return false;
 
     const start = editor.selectionStart;
     const end = editor.selectionEnd;
@@ -831,7 +829,6 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
     setEnabled,
     isEnabled: () => enabled,
     isVisible,
-    refresh: trigger,
     destroy() {
       close();
       editor.removeEventListener('input', onInput);

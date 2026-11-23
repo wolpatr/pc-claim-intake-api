@@ -1,8 +1,6 @@
 // Static Java refreshers served with the app and precached by the service worker.
 // Nothing here calls the network, so lessons and cheat sheets work offline.
 
-export const REFRESHERS_VERSION = '2026-11-refreshers-1';
-
 export const RECEIVER_TYPES = {
   String: 'string',
   List: 'list',
@@ -898,11 +896,3 @@ export const LESSONS = [
     methodLinks: ['list', 'map', 'optional'],
   },
 ];
-
-export const METHODS = METHOD_GROUPS.flatMap((group) =>
-  group.methods.map((method) => ({ ...method, groupId: group.id, groupTitle: group.title })),
-);
-
-export function methodById(id) {
-  return METHODS.find((method) => method.id === id) || null;
-}

@@ -15,6 +15,7 @@ import {
 } from './lib/java.mjs';
 import { criterionThreshold, gradeForPercentage, keywordCoverage } from './public/scoring.mjs';
 import { LESSONS, METHOD_GROUPS } from './public/refreshers.mjs';
+import { latestDraft, readDraft, writeDraft } from './public/draft-store.mjs';
 import {
   DEFAULT_EXAM_COUNT,
   loadQuizBank,
@@ -761,6 +762,7 @@ async function exerciseServiceWorker(baseUrl, publicDir) {
     'scoring.mjs',
     'refreshers.mjs',
     'editor-assist.js',
+    'draft-store.mjs',
     'manifest.webmanifest',
     'icons/icon-192.png',
     'icons/icon-512.png',
@@ -980,6 +982,12 @@ function validateRefresherChecks() {
   for (const id of requiredLessons) {
     record(lessonIds.has(id), `refresher lesson exists: ${id}`);
   }
+  const actualOrder = (Array.isArray(LESSONS) ? LESSONS : []).slice(0, requiredLessons.length).map((lesson) => lesson.id);
+  record(
+    actualOrder.length === requiredLessons.length && actualOrder.every((id, index) => id === requiredLessons[index]),
+    'refresher lessons keep the required order',
+    `got ${actualOrder.join(', ') || '(none)'}`,
+  );
 
   const requiredGroups = {
     string: ['isEmpty', 'length', 'charAt', 'substring', 'equals', 'equalsIgnoreCase', 'contains', 'startsWith', 'endsWith', 'indexOf', 'replace', 'split', 'trim', 'toUpperCase', 'toLowerCase', 'valueOf', 'format'],
@@ -1026,9 +1034,61 @@ function validateRefresherChecks() {
   }
 }
 
+function validateDraftPersistenceChecks() {
+  const memory = new Map();
+  const createStorage = () => ({
+    get length() { return memory.size; },
+    key: (index) => [...memory.keys()][index] ?? null,
+    getItem: (key) => (memory.has(key) ? memory.get(key) : null),
+    setItem: (key, value) => { memory.set(String(key), String(value)); },
+    removeItem: (key) => { memory.delete(key); },
+  });
+  const storage = createStorage();
+  const offlineCode = 'class Intake {\n  int reviewed = 0;\n}';
+  record(
+    writeDraft(storage, 'reload-demo', 'implement', 'editor', offlineCode),
+    'draft store saves the editor draft for a phase',
+  );
+  const reloaded = createStorage();
+  record(
+    readDraft(reloaded, 'reload-demo', 'implement', 'editor')?.text === offlineCode,
+    'offline-authored code survives reopening the same phase',
+  );
+  record(
+    latestDraft(reloaded, 'reload-demo', 'editor')?.text === offlineCode,
+    'reopening the scenario restores the saved code across phases',
+  );
+  record(
+    readDraft(reloaded, 'reload-demo', 'brief', 'editor') === null,
+    'no saved draft falls back to the starter',
+  );
+  const diagnosis = 'The null check is missing before the map lookup.';
+  writeDraft(reloaded, 'reload-demo', 'implement', 'diagnosis', diagnosis);
+  record(
+    latestDraft(reloaded, 'reload-demo', 'diagnosis')?.text === diagnosis,
+    'the debugging diagnosis note restores with the same mechanism',
+  );
+  record(
+    latestDraft(reloaded, 'reload-demo', 'editor')?.text === offlineCode,
+    'the diagnosis draft does not replace the editor draft',
+  );
+  memory.set('interview-sim.draft.v1:reload-demo:test:editor', '{not json');
+  record(readDraft(reloaded, 'reload-demo', 'test', 'editor') === null, 'a corrupt draft is ignored');
+  record(
+    writeDraft(null, 'reload-demo', 'implement', 'editor', offlineCode) === false,
+    'unavailable storage never throws when saving',
+  );
+  record(
+    readDraft(null, 'reload-demo', 'implement', 'editor') === null &&
+      latestDraft(null, 'reload-demo', 'editor') === null,
+    'unavailable storage never throws when restoring',
+  );
+}
+
 async function main() {
   await validatePwaChecks();
   validateRefresherChecks();
+  validateDraftPersistenceChecks();
   await validatePublicUrlChecks();
   const jdk = detectJdk({ refresh: true });
   if (!jdk.available) {

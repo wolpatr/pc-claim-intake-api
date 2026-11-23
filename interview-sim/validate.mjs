@@ -14,6 +14,7 @@ import {
   runSubmission,
 } from './lib/java.mjs';
 import { criterionThreshold, gradeForPercentage, keywordCoverage } from './public/scoring.mjs';
+import { LESSONS, METHOD_GROUPS } from './public/refreshers.mjs';
 import {
   DEFAULT_EXAM_COUNT,
   loadQuizBank,
@@ -758,6 +759,8 @@ async function exerciseServiceWorker(baseUrl, publicDir) {
     'styles.css',
     'app.js',
     'scoring.mjs',
+    'refreshers.mjs',
+    'editor-assist.js',
     'manifest.webmanifest',
     'icons/icon-192.png',
     'icons/icon-512.png',
@@ -936,8 +939,96 @@ async function validatePublicUrlChecks() {
   }
 }
 
+function validateRefresherChecks() {
+  const requiredLessons = [
+    'variables',
+    'operators',
+    'strings',
+    'conditionals',
+    'loops',
+    'arrays',
+    'methods',
+    'classes',
+    'inheritance',
+    'collections',
+    'exceptions',
+    'enums',
+    'generics',
+  ];
+  record(Array.isArray(LESSONS) && LESSONS.length >= requiredLessons.length,
+    `refresher lessons: ${Array.isArray(LESSONS) ? LESSONS.length : 0} (need at least ${requiredLessons.length})`);
+
+  const lessonIds = new Set();
+  for (const lesson of Array.isArray(LESSONS) ? LESSONS : []) {
+    record(isString(lesson.id) && !lessonIds.has(lesson.id), `refresher lesson has a unique id: ${lesson.id || '(missing)'}`);
+    lessonIds.add(lesson.id);
+    record(
+      isString(lesson.title) && isString(lesson.summary) && isString(lesson.example?.code) && isString(lesson.example?.output),
+      `refresher lesson has a title, summary, code example, and output: ${lesson.id || '(missing)'}`,
+    );
+    record(
+      Array.isArray(lesson.keyPoints) && lesson.keyPoints.length >= 2 && lesson.keyPoints.length <= 4 &&
+        lesson.keyPoints.every((point) => isString(point)),
+      `refresher lesson has two to four key points: ${lesson.id || '(missing)'}`,
+    );
+    record(
+      Array.isArray(lesson.methodLinks) &&
+        lesson.methodLinks.every((groupId) => METHOD_GROUPS.some((group) => group.id === groupId)),
+      `refresher lesson links to existing method groups: ${lesson.id || '(missing)'}`,
+    );
+  }
+  for (const id of requiredLessons) {
+    record(lessonIds.has(id), `refresher lesson exists: ${id}`);
+  }
+
+  const requiredGroups = {
+    string: ['isEmpty', 'length', 'charAt', 'substring', 'equals', 'equalsIgnoreCase', 'contains', 'startsWith', 'endsWith', 'indexOf', 'replace', 'split', 'trim', 'toUpperCase', 'toLowerCase', 'valueOf', 'format'],
+    list: ['size', 'get', 'add', 'set', 'remove', 'contains', 'isEmpty', 'indexOf', 'clear', 'forEach'],
+    map: ['put', 'get', 'getOrDefault', 'containsKey', 'containsValue', 'remove', 'keySet', 'values', 'entrySet', 'size', 'isEmpty'],
+    stringbuilder: ['append', 'insert', 'deleteCharAt', 'reverse', 'toString', 'length'],
+    math: ['max', 'min', 'abs', 'round', 'sqrt', 'pow', 'random'],
+    integer: ['parseInt', 'valueOf', 'MAX_VALUE', 'MIN_VALUE'],
+    arrays: ['asList', 'sort', 'toString', 'equals', 'copyOf'],
+    collections: ['sort', 'reverse', 'max', 'min', 'frequency'],
+    optional: ['of', 'ofNullable', 'empty', 'isPresent', 'isEmpty', 'get', 'orElse', 'map', 'filter'],
+  };
+  for (const [groupId, requiredMethods] of Object.entries(requiredGroups)) {
+    const group = METHOD_GROUPS.find((item) => item.id === groupId);
+    record(Boolean(group), `refresher method group exists: ${groupId}`);
+    if (!group) continue;
+    record(isString(group.title) && isString(group.subtitle),
+      `refresher method group has a title and subtitle: ${groupId}`);
+    const names = new Set((group.methods || []).map((method) => method.name));
+    for (const name of requiredMethods) {
+      record(names.has(name), `refresher method card exists: ${groupId}.${name}`);
+    }
+  }
+  record(
+    METHOD_GROUPS.some((group) => group.id === 'objects' &&
+      ['equals', 'requireNonNull'].every((name) => group.methods.some((method) => method.name === name))),
+    'refresher objects group covers equals and requireNonNull',
+  );
+
+  const methodIds = new Set();
+  for (const group of METHOD_GROUPS) {
+    for (const method of group.methods || []) {
+      record(isString(method.id) && !methodIds.has(method.id), `refresher method has a unique id: ${method.id || '(missing)'}`);
+      methodIds.add(method.id);
+      record(
+        isString(method.signature) && isString(method.returns) && isString(method.description) && isString(method.example),
+        `refresher method card has a signature, return type, description, and example: ${method.id || '(missing)'}`,
+      );
+      record(
+        isString(method.description) && method.description.length <= 160,
+        `refresher method description is one short line: ${method.id || '(missing)'}`,
+      );
+    }
+  }
+}
+
 async function main() {
   await validatePwaChecks();
+  validateRefresherChecks();
   await validatePublicUrlChecks();
   const jdk = detectJdk({ refresh: true });
   if (!jdk.available) {

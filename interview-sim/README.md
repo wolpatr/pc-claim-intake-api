@@ -194,6 +194,35 @@ Privacy note: when AI is enabled, the clarifying question, the current editor co
 - In debugging rounds, the root-cause note above the console records your diagnosis in your own words and is scored separately from the fix.
 - In design rounds, `Check sketch (optional)` compiles the editor contents under the name of the sketch's first public type, falling back to the scenario's file name when no public type is declared. It reports the result as informational. Design notes do not need to compile, the sketch does not affect the score, and the round runs without a JDK.
 
+## Editor assistance
+
+The code editor is still a plain `<textarea>`, so native typing, selection, paste, undo/redo, mobile keyboards, and `/api/run` keep working. A positioned suggestion popup and key handling sit around it, with no editor library, build step, or CDN.
+
+- Type `.` after an identifier, or two or more identifier characters, to open suggestions. Type more characters to filter them. Use ArrowUp/ArrowDown to move, Enter or Tab to accept, and Escape to dismiss. On a phone, tap a suggestion; each row is at least 44 px tall.
+- Accepting a method with parameters inserts `name()` and puts the caret inside the parentheses. A no-argument method inserts `name()` and leaves the caret after it. Field constants such as `Integer.MAX_VALUE` insert without parentheses, and no acceptance appends a semicolon.
+- Suggestions come from declarations in the current editor (fields, locals, parameters, `new` expressions, record components, and method return types) plus a built-in catalog. `claim.` on a `Claim` record offers its accessors and declared methods, `name.` on a `String` offers String methods, and `claims.` on a `List<Claim>` offers List methods. In-scope variable names and Java keywords appear in the general list. Declarations from the scenario starter rank above the generic catalog.
+- The popup shows the one-line signature, the return type, and a short beginner-friendly description, such as `isEmpty() - true when the string has no characters`.
+- Automatic syntax closes `(`, `[`, `{`, and `"`, skips over a closer typed over an auto-inserted one, deletes both halves of a pair on Backspace, and smart-indents after an opening brace. Nothing is auto-inserted after a paste or during IME composition.
+- Live templates `psvm`, `sout`, `soutv`, `fori`, and `iter` appear in the same popup and expand only when you accept them with Tab or Enter.
+- The `Writing help` toolbar control turns assistance off and on and stores the choice in `localStorage`. With the popup closed, Tab keeps its ordinary four-space behaviour.
+- Assistance is on by default in coding and debugging rounds. Design rounds hold prose notes, so assistance starts off there while the toolbar control can still turn it on for a class sketch.
+
+## Refreshers
+
+`Refreshers` opens from the start screen and from the top bar on every screen. It is static content served from `public/refreshers.mjs` and precached by the service worker, so it needs no network, no JDK, and no AI.
+
+- **Short lessons** follow a beginner-friendly order inspired by Bro Code's Java full course: variables and data types; operators and expressions; strings; conditionals; loops; arrays; methods; classes and objects; inheritance, polymorphism, and interfaces; collections (ArrayList and HashMap); exceptions; enums; generics. Each lesson has a plain-English explanation, one compact example with its expected output, two to four key points, and links to the relevant method cards.
+- **Common-method cheat sheets** group entries by String, List/ArrayList, Map/HashMap, StringBuilder, Math, Integer, Arrays, Collections, Objects, and Optional. Each entry shows its signature, a one-line description, and a tiny example. The search box filters every group as you type, so a forgotten method such as `isEmpty` is quick to find on a phone.
+- The page stacks into one column on narrow screens, uses 44 px tap targets, and never scrolls the page sideways at 320 px width.
+
+## Offline use
+
+The installable app shell, editor assistance, and refreshers work with no network and no local server.
+
+- After a successful online load, the simulator stores the scenario catalog and each scenario's public projection in `localStorage` under a versioned key. A later offline reload renders the cached start screen and lets you open a scenario and write code.
+- In offline mode, `Run tests`, interviewer questions and probes, the debrief, exam start, and progress history are disabled with an inline "needs the local server" message. The editor, writing help, and refreshers stay usable.
+- The service worker cache name is bumped whenever the precached assets change, so installed apps pick up the new shell and refresher module.
+
 ## Exam mode
 
 The start screen offers a timed exam beside scenario practice.
@@ -315,7 +344,8 @@ node interview-sim/validate.mjs
 It checks the schema per round type, unique ids, non-empty rubrics and weights, that every clarifying question example and a set of paraphrase questions resolve to the intended topic, the required scenario mix (at least 12 scenarios, 2 debugging and 2 design), that every code starter compiles and fails before completion, that each debugging regression test fails on the broken starter, that every reference solution passes both hidden suites, and that each design criterion's strong answer and reference design, plus each debugging diagnosis's strong answer, clear their evidence thresholds.
 It also checks that the shared quiz bank loads with eight topics and valid questions, that a standard exam selects 20 unique answer-free questions balanced across topics, that a focused selection returns exactly the requested ids, and that exam scoring and the tailored plan follow the documented rules.
 
-It first starts the server on a random port and verifies the installable web app: the manifest's MIME type and fields, the icon PNG sizes, and that the service worker precaches the app shell, leaves `/api` to the network, and serves the cached shell offline.
+It first starts the server on a random port and verifies the installable web app: the manifest's MIME type and fields, the icon PNG sizes, and that the service worker precaches the app shell (including `refreshers.mjs` and `editor-assist.js`), leaves `/api` to the network, and serves the cached shell offline.
+It also loads `public/refreshers.mjs` and checks the lesson structure, the required lesson order, the method-group coverage, and that every method card has a signature, return type, short description, and example.
 
 It also starts the server with `INTERVIEW_SIM_PUBLIC_URL` set and checks that the public host and origin are accepted, unknown hosts and origins are still rejected, the bare host form works on the default HTTPS port, and every malformed value exits with a single-line error.
 
@@ -352,7 +382,9 @@ interview-sim/
     scenarios.mjs       scenario loading and public projection
   public/
     index.html          single-page UI
-    app.js              session flow, timer, chat, scoring
+    app.js              session flow, timer, chat, scoring, refreshers UI, offline cache
+    editor-assist.js    completion popup, type inference, auto-close, live templates
+    refreshers.mjs      static lessons and common-method cheat-sheet data
     scoring.mjs         keyword evidence helpers shared by app.js and validate.mjs
     styles.css          local styling, no external assets
     manifest.webmanifest  installable web app metadata

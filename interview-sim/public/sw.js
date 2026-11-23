@@ -1,10 +1,12 @@
-const CACHE_NAME = 'interview-sim-v1';
+const CACHE_NAME = 'interview-sim-v3';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './app.js',
   './scoring.mjs',
+  './refreshers.mjs',
+  './editor-assist.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

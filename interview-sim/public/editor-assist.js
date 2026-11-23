@@ -740,6 +740,11 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
       close();
       return;
     }
+    const clean = stripNoise(value);
+    if (start > 0 && clean[start - 1] !== value[start - 1]) {
+      close();
+      return;
+    }
     const before = value.slice(0, start);
     const model = collectModel(value);
     const tokenMatch = before.match(/[A-Za-z_$][\w$]*$/);

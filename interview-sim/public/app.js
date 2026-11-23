@@ -536,22 +536,31 @@ function draftStorage() {
   }
 }
 
-function draftTimerId(scenarioId, phase, kind) {
-  return `${scenarioId}:${phase}:${kind}`;
+function draftTimerId(scenarioId, kind) {
+  return `${scenarioId}:${kind}`;
 }
 
-function cancelDraftSave(id) {
+function cancelDraftSave(scenarioId, kind) {
+  const id = draftTimerId(scenarioId, kind);
   const timer = draftTimers.get(id);
   if (!timer) return;
   clearTimeout(timer);
   draftTimers.delete(id);
 }
 
+function flushDraftSaves() {
+  for (const [id, entry] of draftTimers) {
+    clearTimeout(entry.timer);
+    draftTimers.delete(id);
+    writeDraft(draftStorage(), entry.scenarioId, entry.phase, entry.kind, entry.text);
+  }
+}
+
 function saveDraftNow(kind, text) {
   const scenarioId = state.scenario?.id;
   if (!scenarioId) return;
   const phase = currentPhase();
-  cancelDraftSave(draftTimerId(scenarioId, phase, kind));
+  cancelDraftSave(scenarioId, kind);
   writeDraft(draftStorage(), scenarioId, phase, kind, text);
 }
 
@@ -559,12 +568,13 @@ function scheduleDraftSave(kind, text) {
   const scenarioId = state.scenario?.id;
   if (!scenarioId) return;
   const phase = currentPhase();
-  const id = draftTimerId(scenarioId, phase, kind);
-  cancelDraftSave(id);
-  draftTimers.set(id, setTimeout(() => {
+  cancelDraftSave(scenarioId, kind);
+  const id = draftTimerId(scenarioId, kind);
+  const timer = setTimeout(() => {
     draftTimers.delete(id);
     writeDraft(draftStorage(), scenarioId, phase, kind, text);
-  }, DRAFT_SAVE_DELAY));
+  }, DRAFT_SAVE_DELAY);
+  draftTimers.set(id, { timer, scenarioId, phase, kind, text });
 }
 
 function restoredDraft(kind) {
@@ -807,6 +817,7 @@ function startSession(scenario, minutes) {
     showToast('A JDK is required before starting a coding or debugging session.');
     return;
   }
+  flushDraftSaves();
   state.scenario = scenario;
   state.minutes = { ...minutes };
   state.budgets = {};
@@ -1075,6 +1086,7 @@ function updateHintButton() {
 
 function jumpToPhase(index) {
   if (!state.active) return;
+  flushDraftSaves();
   const phases = phaseList();
   const target = Math.max(0, Math.min(phases.length - 1, index));
   if (target === state.phaseIndex) {
@@ -2688,6 +2700,11 @@ function bindEvents() {
     if (state.active) scheduleDraftSave('editor', $('editor').value);
   });
 
+  window.addEventListener('pagehide', flushDraftSaves);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) flushDraftSaves();
+  });
+
   $('assistToggle').addEventListener('click', () => {
     if (!assist) return;
     const next = !assist.isEnabled();
@@ -2705,6 +2722,7 @@ function bindEvents() {
       const start = editor.selectionStart;
       const end = editor.selectionEnd;
       editor.setRangeText('    ', start, end, 'end');
+      if (state.active) scheduleDraftSave('editor', editor.value);
       return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {

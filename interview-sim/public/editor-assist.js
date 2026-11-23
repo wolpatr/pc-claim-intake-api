@@ -464,7 +464,7 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
   let enabled = true;
   let options = [];
   let selected = 0;
-  let range = { start: 0, end: 0 };
+  let range = { start: 0, end: 0, text: '' };
   let compositionActive = false;
   let suppressNextInput = false;
 
@@ -493,11 +493,15 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
   }
 
   function setCaret(position, end = position) {
+    close();
     editor.setSelectionRange(position, end);
   }
 
   function replace(start, end, text) {
     editor.setRangeText(text, start, end, 'end');
+    close();
+    suppressInputOnce();
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   function updateSelection() {
@@ -616,19 +620,21 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
   }
 
   function accept(option) {
-    const { start, end } = range;
-    const value = editor.value;
+    const { start, end, text } = range;
+    if (editor.selectionStart !== end || editor.selectionEnd !== end || editor.value.slice(start, end) !== text) {
+      close();
+      return false;
+    }
     let insert = option.insert || '';
     let caretOffset = option.caretOffset ?? insert.length;
     if (option.kind === 'template' && option.template) {
-      const built = templateInsertion(option.template, value, start);
+      const built = templateInsertion(option.template, editor.value, start);
       insert = built.insert;
       caretOffset = built.caretOffset;
     }
-    close();
     replace(start, end, insert);
     setCaret(start + caretOffset);
-    suppressInputOnce();
+    return true;
   }
 
   function trigger() {
@@ -647,7 +653,7 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
 
     if (before[receiverEnd - 1] === '.') {
       const receiverType = resolveReceiverType(before.slice(0, receiverEnd - 1), model);
-      range = { start: receiverEnd, end: start };
+      range = { start: receiverEnd, end: start, text: token };
       if (!receiverType) {
         close();
         return;
@@ -661,7 +667,7 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
       close();
       return;
     }
-    range = { start: start - token.length, end: start };
+    range = { start: start - token.length, end: start, text: token };
     const suggestions = filterList(dedupe(generalSuggestions(model)), token);
     render(suggestions);
   }
@@ -669,7 +675,8 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
   function handleKeyDown(event) {
     if (event.isComposing || compositionActive) return false;
     const key = event.key;
-    if (event.ctrlKey || event.metaKey || event.altKey) return false;
+    const altGraph = typeof event.getModifierState === 'function' && event.getModifierState('AltGraph');
+    if ((event.ctrlKey || event.metaKey || event.altKey) && !altGraph) return false;
 
     if (isVisible()) {
       if (key === 'ArrowDown' || key === 'ArrowUp') {
@@ -680,10 +687,12 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
         return true;
       }
       if (key === 'Enter' || key === 'Tab') {
-        event.preventDefault();
         const option = options[selected];
-        if (option) accept(option);
-        return true;
+        if (option && accept(option)) {
+          event.preventDefault();
+          return true;
+        }
+        return false;
       }
       if (key === 'Escape') {
         event.preventDefault();
@@ -716,7 +725,6 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
         replace(start, end, `${key}${closer}`);
         setCaret(start + 1);
       }
-      suppressInputOnce();
       return true;
     }
 
@@ -733,7 +741,6 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
         event.preventDefault();
         replace(start - 1, start + 1, '');
         setCaret(start - 1);
-        suppressInputOnce();
         return true;
       }
     }
@@ -752,14 +759,12 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
           replace(start, end, `\n${inner}`);
           setCaret(start + 1 + inner.length);
         }
-        suppressInputOnce();
         return true;
       }
       if (lineIndent && start === end) {
         event.preventDefault();
         replace(start, start, `\n${lineIndent}`);
         setCaret(start + 1 + lineIndent.length);
-        suppressInputOnce();
         return true;
       }
     }
@@ -812,6 +817,9 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
       if (popup.contains(document.activeElement)) return;
       close();
     }, 0);
+  });
+  editor.addEventListener('pointerdown', () => {
+    close();
   });
   document.addEventListener('pointerdown', (event) => {
     if (!isVisible()) return;

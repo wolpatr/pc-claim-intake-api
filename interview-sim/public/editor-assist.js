@@ -545,6 +545,7 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
   let range = { start: 0, end: 0, text: '' };
   let compositionActive = false;
   let suppressNextInput = false;
+  let pointerPress = null;
 
   const isVisible = () => !popup.classList.contains('hidden');
 
@@ -686,7 +687,23 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
       item.append(head, description);
       item.addEventListener('pointerdown', (event) => {
         event.preventDefault();
-        accept(option);
+        pointerPress = {
+          x: event.clientX,
+          y: event.clientY,
+          pointerId: event.pointerId,
+          option,
+        };
+      });
+      item.addEventListener('pointerup', (event) => {
+        const press = pointerPress;
+        if (!press || press.pointerId !== event.pointerId) return;
+        pointerPress = null;
+        if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) return;
+        event.preventDefault();
+        accept(press.option);
+      });
+      item.addEventListener('pointercancel', () => {
+        pointerPress = null;
       });
       popup.appendChild(item);
     });

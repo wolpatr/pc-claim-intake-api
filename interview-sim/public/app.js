@@ -950,6 +950,10 @@ function startTicker() {
 
 function tick() {
   if (!state.active || !state.running) return;
+  if (refreshersVisible()) {
+    state.lastTick = performance.now();
+    return;
+  }
   const now = performance.now();
   const delta = Math.max(0, (now - state.lastTick) / 1000);
   state.lastTick = now;
@@ -2061,6 +2065,10 @@ function toggleExamPause() {
 
 function tickExam() {
   if (!exam.active || !exam.running || exam.submitted) return;
+  if (refreshersVisible()) {
+    exam.lastTick = performance.now();
+    return;
+  }
   const now = performance.now();
   const delta = Math.max(0, (now - exam.lastTick) / 1000);
   exam.lastTick = now;

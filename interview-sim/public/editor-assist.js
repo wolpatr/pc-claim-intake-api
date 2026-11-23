@@ -188,12 +188,26 @@ function findMatching(text, openIndex, open, close) {
 
 function baseTypeName(type) {
   if (!type) return '';
-  return String(type).replace(/\[\]/g, '').replace(/<.*>/g, '').trim();
+  return String(type).replace(/<.*>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function isArrayType(type) {
+  return /\[\]\s*$/.test(String(type || '').trim());
 }
 
 function genericArguments(type) {
-  const match = String(type || '').match(/<([^<>]*)>/);
-  return match ? splitTopLevel(match[1], ',') : [];
+  const text = String(type || '');
+  const open = text.indexOf('<');
+  if (open === -1) return [];
+  let depth = 0;
+  for (let index = open; index < text.length; index += 1) {
+    if (text[index] === '<') depth += 1;
+    else if (text[index] === '>') {
+      depth -= 1;
+      if (depth === 0) return splitTopLevel(text.slice(open + 1, index), ',');
+    }
+  }
+  return [];
 }
 
 function collectModel(source) {
@@ -276,12 +290,26 @@ function collectModel(source) {
   return { bindings, types, methodReturns };
 }
 
+function skipQuotedBackward(text, quoteIndex, quote) {
+  for (let index = quoteIndex - 1; index >= 0; index -= 1) {
+    if (text[index] !== quote) continue;
+    let escapes = 0;
+    for (let probe = index - 1; probe >= 0 && text[probe] === '\\'; probe -= 1) escapes += 1;
+    if (escapes % 2 === 0) return index - 1;
+  }
+  return -1;
+}
+
 function extractReceiverExpression(beforeCaret) {
   let index = beforeCaret.length - 1;
   while (index >= 0 && /\s/.test(beforeCaret[index])) index -= 1;
   let depth = 0;
   while (index >= 0) {
     const char = beforeCaret[index];
+    if (depth > 0 && (char === '"' || char === "'")) {
+      index = skipQuotedBackward(beforeCaret, index, char);
+      continue;
+    }
     if (char === ')') {
       depth += 1;
       index -= 1;
@@ -290,6 +318,10 @@ function extractReceiverExpression(beforeCaret) {
     if (char === '(') {
       if (depth === 0) break;
       depth -= 1;
+      index -= 1;
+      continue;
+    }
+    if (depth > 0) {
       index -= 1;
       continue;
     }
@@ -360,6 +392,15 @@ function resolveReceiverType(beforeCaret, model) {
 function memberSuggestions(typeName, model) {
   const base = baseTypeName(typeName);
   const suggestions = [];
+  if (isArrayType(typeName)) {
+    suggestions.push(makeSuggestion({
+      name: 'length',
+      kind: 'field',
+      signature: 'length',
+      returns: 'int',
+      description: 'Number of elements in the array.',
+    }, 120));
+  }
   const declared = model.types.get(base);
   if (declared) {
     for (const member of declared.values()) {

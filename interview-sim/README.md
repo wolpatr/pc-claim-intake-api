@@ -94,6 +94,12 @@ The script:
 3. Open the printed `https://<machine>.<tailnet>.ts.net:8443` URL on the phone. Chrome shows a valid secure origin. Open the menu and choose **Install app**.
 4. Keep the PC awake and the server window running while you practice. Access is limited to the tailnet.
 
+The 8443 Serve mapping is persistent. It stays active after the node server exits until you remove it. It is reachable only from your tailnet and points at `http://127.0.0.1:4321`, so nothing is exposed publicly; never repoint it at another service. Remove it when you are done:
+
+```powershell
+tailscale serve --https=8443 off
+```
+
 `INTERVIEW_SIM_PUBLIC_URL` is the opt-in switch. Set it directly when you run the server yourself:
 
 ```powershell

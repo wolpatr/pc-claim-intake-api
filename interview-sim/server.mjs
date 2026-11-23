@@ -26,6 +26,10 @@ const PORT = Number(process.env.INTERVIEW_SIM_PORT || 4321);
 const MAX_BODY = 3 * 1024 * 1024;
 
 const truthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+const failStartup = (message) => {
+  writeFileSync(2, `${message}\n`);
+  process.exit(1);
+};
 const LAN_ENABLED = truthy(process.env.INTERVIEW_SIM_LAN);
 const HTTPS_ENABLED = truthy(process.env.INTERVIEW_SIM_HTTPS);
 const HOST = process.env.INTERVIEW_SIM_HOST || (LAN_ENABLED ? '0.0.0.0' : DEFAULT_HOST);
@@ -42,8 +46,7 @@ function detectLanAddress() {
 
 const LAN_HOST = String(process.env.INTERVIEW_SIM_PUBLIC_HOST || '').trim() || (LAN_ENABLED ? detectLanAddress() : '');
 if (LAN_ENABLED && !LAN_HOST) {
-  process.stderr.write('LAN mode needs a reachable address. Set INTERVIEW_SIM_PUBLIC_HOST to this computer\'s Wi-Fi IPv4 address.\n');
-  process.exit(1);
+  failStartup('LAN mode needs a reachable address. Set INTERVIEW_SIM_PUBLIC_HOST to this computer\'s Wi-Fi IPv4 address.');
 }
 
 const LOCAL_HOST = HOST === '0.0.0.0' ? DEFAULT_HOST : HOST;
@@ -76,8 +79,7 @@ let PUBLIC_URL = null;
 try {
   PUBLIC_URL = parsePublicUrl(process.env.INTERVIEW_SIM_PUBLIC_URL);
 } catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exit(1);
+  failStartup(error instanceof Error ? error.message : String(error));
 }
 const DISPLAY_URL = PUBLIC_URL ? PUBLIC_URL.origin : BASE_URL;
 
@@ -111,7 +113,6 @@ if (LAN_ENABLED) {
 if (PUBLIC_URL) {
   ALLOWED_HOSTS.add(PUBLIC_URL.host.toLowerCase());
   ALLOWED_ORIGINS.add(PUBLIC_URL.origin.toLowerCase());
-  if (!PUBLIC_URL.port) ALLOWED_HOSTS.add(PUBLIC_URL.hostname.toLowerCase());
 }
 
 function isAllowedHost(hostHeader) {
@@ -241,8 +242,7 @@ if (HTTPS_ENABLED) {
   try {
     tls = await ensureTls();
   } catch (error) {
-    process.stderr.write(`HTTPS mode could not start: ${error instanceof Error ? error.message : String(error)}\n`);
-    process.exit(1);
+    failStartup(`HTTPS mode could not start: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

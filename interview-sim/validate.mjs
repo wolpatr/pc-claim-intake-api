@@ -630,7 +630,7 @@ async function startServerExpectingFailure(publicUrl) {
       clearTimeout(timer);
       resolve({ timedOut: false, code: null });
     });
-    child.on('exit', (code) => {
+    child.on('close', (code) => {
       clearTimeout(timer);
       resolve({ timedOut: false, code });
     });

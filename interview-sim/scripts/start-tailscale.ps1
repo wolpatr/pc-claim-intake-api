@@ -119,6 +119,8 @@ if (-not $SkipServe) {
     }
     Write-Host "Added Tailscale Serve mapping: HTTPS port $HttpsPort -> $target. Other Serve mappings were left untouched."
   }
+  Write-Host "This Serve mapping stays active after this server exits until you remove it. It is reachable only from this tailnet and points at $target; never repoint it at another service."
+  Write-Host "Remove it later with: tailscale serve --https=$HttpsPort off"
 } else {
   Write-Host "Skipping Tailscale Serve configuration (-SkipServe). Assuming HTTPS port $HttpsPort already proxies to $target."
 }

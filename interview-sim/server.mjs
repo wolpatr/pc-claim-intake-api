@@ -26,6 +26,10 @@ const PORT = Number(process.env.INTERVIEW_SIM_PORT || 4321);
 const MAX_BODY = 3 * 1024 * 1024;
 
 const truthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+const failStartup = (message) => {
+  writeFileSync(2, `${message}\n`);
+  process.exit(1);
+};
 const LAN_ENABLED = truthy(process.env.INTERVIEW_SIM_LAN);
 const HTTPS_ENABLED = truthy(process.env.INTERVIEW_SIM_HTTPS);
 const HOST = process.env.INTERVIEW_SIM_HOST || (LAN_ENABLED ? '0.0.0.0' : DEFAULT_HOST);
@@ -42,14 +46,42 @@ function detectLanAddress() {
 
 const LAN_HOST = String(process.env.INTERVIEW_SIM_PUBLIC_HOST || '').trim() || (LAN_ENABLED ? detectLanAddress() : '');
 if (LAN_ENABLED && !LAN_HOST) {
-  process.stderr.write('LAN mode needs a reachable address. Set INTERVIEW_SIM_PUBLIC_HOST to this computer\'s Wi-Fi IPv4 address.\n');
-  process.exit(1);
+  failStartup('LAN mode needs a reachable address. Set INTERVIEW_SIM_PUBLIC_HOST to this computer\'s Wi-Fi IPv4 address.');
 }
 
 const LOCAL_HOST = HOST === '0.0.0.0' ? DEFAULT_HOST : HOST;
 const formatHost = (host) => (isIP(host) === 6 ? `[${host}]` : host);
 const URL_HOST = formatHost(LAN_ENABLED ? LAN_HOST : LOCAL_HOST);
 const BASE_URL = `${SCHEME}://${URL_HOST}:${PORT}`;
+
+function parsePublicUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const reject = (reason) => {
+    throw new Error(`INTERVIEW_SIM_PUBLIC_URL ${reason}. Use an https origin such as https://<machine>.<tailnet>.ts.net:8443`);
+  };
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    reject('is not a valid URL');
+  }
+  if (parsed.protocol !== 'https:') reject('must start with https://');
+  if (!parsed.hostname) reject('must include a hostname');
+  if (parsed.username || parsed.password) reject('must not include credentials');
+  if (parsed.search) reject('must not include a query string');
+  if (parsed.hash) reject('must not include a fragment');
+  if (parsed.pathname !== '/') reject('must not include a path');
+  return parsed;
+}
+
+let PUBLIC_URL = null;
+try {
+  PUBLIC_URL = parsePublicUrl(process.env.INTERVIEW_SIM_PUBLIC_URL);
+} catch (error) {
+  failStartup(error instanceof Error ? error.message : String(error));
+}
+const DISPLAY_URL = PUBLIC_URL ? PUBLIC_URL.origin : BASE_URL;
 
 const DEFAULT_PORT = HTTPS_ENABLED ? 443 : 80;
 const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
@@ -77,6 +109,10 @@ if (LAN_ENABLED) {
     ALLOWED_HOSTS.add(URL_HOST.toLowerCase());
     ALLOWED_ORIGINS.add(`${SCHEME}://${URL_HOST}`.toLowerCase());
   }
+}
+if (PUBLIC_URL) {
+  ALLOWED_HOSTS.add(PUBLIC_URL.host.toLowerCase());
+  ALLOWED_ORIGINS.add(PUBLIC_URL.origin.toLowerCase());
 }
 
 function isAllowedHost(hostHeader) {
@@ -206,8 +242,7 @@ if (HTTPS_ENABLED) {
   try {
     tls = await ensureTls();
   } catch (error) {
-    process.stderr.write(`HTTPS mode could not start: ${error instanceof Error ? error.message : String(error)}\n`);
-    process.exit(1);
+    failStartup(`HTTPS mode could not start: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -554,7 +589,10 @@ const ai = aiStatus();
 
 server.listen(PORT, HOST, () => {
   loadScenarios();
-  process.stdout.write(`Interview simulator: ${BASE_URL}\n`);
+  process.stdout.write(`Interview simulator: ${DISPLAY_URL}\n`);
+  if (PUBLIC_URL) {
+    process.stdout.write(`Public origin: ${PUBLIC_URL.origin} (proxied to ${HOST}:${PORT}; Tailscale Serve terminates TLS)\n`);
+  }
   if (LAN_ENABLED) {
     process.stdout.write(`LAN mode: enabled (bound to ${HOST})\n`);
     if (HTTPS_ENABLED && tls && tls.generated) {

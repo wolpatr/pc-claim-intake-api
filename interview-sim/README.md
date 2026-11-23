@@ -25,13 +25,13 @@ From the repository root:
 node interview-sim/server.mjs
 ```
 
-Open http://127.0.0.1:4321. By default the server binds to `127.0.0.1` only. Set `INTERVIEW_SIM_PORT` to change the port. To serve the app to an Android phone on the same Wi-Fi, see [Install on Android](#install-on-android).
+Open http://127.0.0.1:4321. By default the server binds to `127.0.0.1` only. Set `INTERVIEW_SIM_PORT` to change the port. To serve the app to an Android phone on the same Wi-Fi, see [Install on Android](#install-on-android). To reach it from the phone over Tailscale instead, see [Run from your phone over Tailscale](#run-from-your-phone-over-tailscale).
 
 There is no build step, no bundler, and no CDN asset.
 
 ## Install on Android
 
-Android installs a web app only from a secure context. An `https://` origin qualifies, and so does `http://localhost`, but a plain HTTP address on the LAN does not. Choose one of the two paths below.
+Android installs a web app only from a secure context. An `https://` origin qualifies, and so does `http://localhost`, but a plain HTTP address on the LAN does not. Choose one of the two LAN paths below, or use the Tailscale path in [Run from your phone over Tailscale](#run-from-your-phone-over-tailscale).
 
 ### Path A: LAN + HTTPS (recommended, full app install)
 
@@ -72,6 +72,69 @@ node interview-sim/server.mjs
 Open `http://192.168.1.42:4321`. Chrome only offers **Add to Home screen**, which creates a shortcut that opens this URL in a normal browser tab. There is no service worker, no cached offline shell, and no standalone window, but every scenario, exam, and API call works while the server is running. Use this path only when you cannot install the certificate.
 
 Both LAN paths are opt-in. Without those variables the server keeps the original `127.0.0.1` binding and its existing host and origin allow list.
+
+## Run from your phone over Tailscale
+
+Use this when you want the phone to reach the simulator on the home PC over your Tailscale network, away from the home Wi-Fi, with a valid HTTPS origin. Tailscale Serve terminates TLS and proxies to the server, which keeps listening only on `127.0.0.1`.
+
+1. Confirm Tailscale is up and signed in on both the PC and the phone, and that they are peers on the same tailnet. MagicDNS and HTTPS certificates must be enabled for the tailnet.
+2. From the repository root, start a session:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File interview-sim\scripts\start-tailscale.ps1
+```
+
+The script:
+
+- checks that `tailscale` is on PATH and the backend is running, then reads this node's DNS name and Tailscale IPv4 at runtime;
+- checks that the local simulator port (4321 by default) is free, and stops before touching Serve if it is not;
+- reads `tailscale serve status --json` and stops without changing anything if HTTPS port 8443 already points at something other than `http://127.0.0.1:4321`;
+- otherwise adds only `https://<machine>.<tailnet>.ts.net:8443 -> http://127.0.0.1:4321` and prints what it added;
+- starts `node interview-sim/server.mjs` with `INTERVIEW_SIM_PUBLIC_URL` set to the printed HTTPS origin.
+
+3. Open the printed `https://<machine>.<tailnet>.ts.net:8443` URL on the phone. Chrome shows a valid secure origin. Open the menu and choose **Install app**.
+4. Keep the PC awake and the server window running while you practice. Access is limited to the tailnet.
+
+The 8443 Serve mapping is persistent. It stays active after the node server exits until you remove it. It is reachable only from your tailnet and points at `http://127.0.0.1:4321`, so nothing is exposed publicly; never repoint it at another service. Remove it when you are done:
+
+```powershell
+tailscale serve --https=8443 off
+```
+
+`INTERVIEW_SIM_PUBLIC_URL` is the opt-in switch. Set it directly when you run the server yourself:
+
+```powershell
+$env:INTERVIEW_SIM_PUBLIC_URL = "https://<machine>.<tailnet>.ts.net:8443"
+node interview-sim/server.mjs
+```
+
+The server accepts the value only when it is an `https://` URL whose host has no credentials, query, fragment, or path other than `/`. It adds that host and port to the allowed host and origin lists, still rejects every other host and origin, prints the public URL in the startup message, and keeps the listener on `127.0.0.1`. Without the variable nothing changes.
+
+Useful switches:
+
+- `-SkipServe` starts the server without touching Tailscale Serve, for when you manage Serve yourself.
+- `-Port <port>` changes the local simulator port (default 4321).
+- `-HttpsPort <port>` changes the Serve HTTPS port (default 8443).
+
+The script never installs Tailscale, signs in, changes tailnet policy, or edits firewall rules. It fails with a clear message when one of those is missing.
+
+### Troubleshooting
+
+- **The phone cannot reach the URL.** Run `tailscale status` on both devices and confirm both show the same tailnet. The URL must match the printed port (default `:8443`).
+- **The certificate is not trusted.** Enable HTTPS certificates for the tailnet in the Tailscale admin console, then rerun the script so it derives the certificate hostname again.
+- **The browser shows `Forbidden host` or `Forbidden origin`.** The server was started without `INTERVIEW_SIM_PUBLIC_URL`, or the variable does not match the hostname and port in the browser. Start it with the script.
+- **The script reports a Serve conflict.** Something else already uses HTTPS port 8443. Stop that mapping or choose another `-HttpsPort`; the script changes nothing when it finds a conflict.
+- **The session stops after the PC sleeps.** Wake the PC and start the session again. When the PC is unreachable, the installed app falls back to its offline shell, refreshers, and writing practice; running tests returns when the PC is reachable again.
+- **The other service on the hostname root breaks.** It should not: this setup adds only the 8443 mapping. Never point the root Serve mapping at the simulator, and never use `tailscale funnel` for it.
+
+### Boundaries
+
+The simulator has no authentication and it compiles and runs Java on this PC. Treat it as tailnet-only:
+
+- Never expose it with `tailscale funnel` or any other public tunnel.
+- Use Tailscale access rules to limit it to your own devices.
+- The existing Serve mapping at the hostname root belongs to another service and must stay unchanged. Only the dedicated 8443 mapping is added for the simulator.
+- Keep any tailnet name, machine name, and address out of tracked files; the script derives them at runtime and the documentation uses placeholders.
 
 ## JDK detection
 
@@ -254,6 +317,8 @@ It also checks that the shared quiz bank loads with eight topics and valid quest
 
 It first starts the server on a random port and verifies the installable web app: the manifest's MIME type and fields, the icon PNG sizes, and that the service worker precaches the app shell, leaves `/api` to the network, and serves the cached shell offline.
 
+It also starts the server with `INTERVIEW_SIM_PUBLIC_URL` set and checks that the public host and origin are accepted, unknown hosts and origins are still rejected, the bare host form works on the default HTTPS port, and every malformed value exits with a single-line error.
+
 ## Progress and history
 
 A completed debrief appends one JSON record under `interview-sim/progress/` per session.
@@ -265,7 +330,7 @@ Records stay on this machine.
 
 ## Local-only and sandbox limitations
 
-- By default the server binds to `127.0.0.1`. It rejects requests with a non-local `Host` header, rejects API requests whose `Origin` header is not the local server, and requires `Content-Type: application/json` on API POSTs. LAN mode is opt-in: when `INTERVIEW_SIM_LAN=1` is set, the server binds the configured interface and adds only the chosen LAN host name to the allowed hosts and origins. There is no authentication, telemetry, or remote service other than the optional AI provider you configure. Because LAN mode has no authentication, use it only on a network you trust.
+- By default the server binds to `127.0.0.1`. It rejects requests with a non-local `Host` header, rejects API requests whose `Origin` header is not the local server, and requires `Content-Type: application/json` on API POSTs. LAN mode is opt-in: when `INTERVIEW_SIM_LAN=1` is set, the server binds the configured interface and adds only the chosen LAN host name to the allowed hosts and origins. Tailscale mode is opt-in: `INTERVIEW_SIM_PUBLIC_URL` adds only that HTTPS origin and its host while the listener stays on `127.0.0.1`. There is no authentication, telemetry, or remote service other than the optional AI provider you configure. Because these modes have no authentication, use them only on a network you trust, and never expose the simulator through `tailscale funnel` or a public tunnel.
 - Your code is the user's own practice code. It is compiled and run locally in a temporary directory outside the repository, with a per-test timeout and a total timeout, and the directory is deleted afterward. On Windows, the whole process tree is killed on timeout.
 - **This is not a security sandbox.** Java code can read and write local files and use the network. Do not run code you do not trust. The timeouts limit hangs, not malicious behaviour.
 - Hidden tests are not sent to the browser, but test results and failure output are shown so you can debug.
@@ -277,6 +342,8 @@ Records stay on this machine.
 interview-sim/
   server.mjs            local HTTP and HTTPS server and API
   validate.mjs          scenario, exam, and installable-app validator
+  scripts/
+    start-tailscale.ps1 configures Serve and starts a phone session over Tailscale
   lib/
     ai.mjs              optional AI calls with scripted fallbacks
     exam.mjs            quiz bank loading, exam selection, scoring, tailored plan

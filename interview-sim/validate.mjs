@@ -1,4 +1,5 @@
 import path from 'node:path';
+import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -561,7 +562,7 @@ function waitForServer(child) {
     );
     child.stdout.on('data', (chunk) => {
       stdout += chunk;
-      if (stdout.includes('Interview simulator:')) finish(resolve);
+      if (stdout.includes('Interview simulator:')) finish(resolve, stdout);
     });
     child.stderr.on('data', (chunk) => {
       stderr += chunk;
@@ -571,7 +572,17 @@ function waitForServer(child) {
   });
 }
 
-async function startPwaServer() {
+const SERVER_ENV_DEFAULTS = {
+  INTERVIEW_SIM_HOST: '',
+  INTERVIEW_SIM_LAN: '',
+  INTERVIEW_SIM_HTTPS: '',
+  INTERVIEW_SIM_PUBLIC_HOST: '',
+  INTERVIEW_SIM_PUBLIC_URL: '',
+  INTERVIEW_SIM_TLS_CERT: '',
+  INTERVIEW_SIM_TLS_KEY: '',
+};
+
+async function startPwaServer(overrides = {}) {
   const serverPath = fileURLToPath(new URL('./server.mjs', import.meta.url));
   let lastError = null;
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -579,25 +590,76 @@ async function startPwaServer() {
     const child = spawn(process.execPath, [serverPath], {
       env: {
         ...process.env,
+        ...SERVER_ENV_DEFAULTS,
         INTERVIEW_SIM_PORT: String(port),
-        INTERVIEW_SIM_HOST: '',
-        INTERVIEW_SIM_LAN: '',
-        INTERVIEW_SIM_HTTPS: '',
-        INTERVIEW_SIM_PUBLIC_HOST: '',
-        INTERVIEW_SIM_TLS_CERT: '',
-        INTERVIEW_SIM_TLS_KEY: '',
+        ...overrides,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     try {
-      await waitForServer(child);
-      return { child, baseUrl: `http://127.0.0.1:${port}` };
+      const output = await waitForServer(child);
+      return { child, port, baseUrl: `http://127.0.0.1:${port}`, output };
     } catch (error) {
       lastError = error;
       child.kill();
     }
   }
   throw lastError;
+}
+
+async function startServerExpectingFailure(publicUrl) {
+  const serverPath = fileURLToPath(new URL('./server.mjs', import.meta.url));
+  const port = 45000 + Math.floor(Math.random() * 10000);
+  const child = spawn(process.execPath, [serverPath], {
+    env: {
+      ...process.env,
+      ...SERVER_ENV_DEFAULTS,
+      INTERVIEW_SIM_PORT: String(port),
+      INTERVIEW_SIM_PUBLIC_URL: publicUrl,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  child.stdout.on('data', () => {});
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk;
+  });
+  const result = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ timedOut: true, code: null }), 10000);
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve({ timedOut: false, code: null });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ timedOut: false, code });
+    });
+  });
+  if (result.timedOut) child.kill();
+  return { ...result, stderr };
+}
+
+function httpJson(baseUrl, { route = '/', method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(route, `${baseUrl}/`);
+    const request = http.request({
+      hostname: url.hostname,
+      port: url.port,
+      path: `${url.pathname}${url.search}`,
+      method,
+      headers,
+      timeout: 10000,
+    }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => {
+        resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString('utf8') });
+      });
+    });
+    request.on('timeout', () => request.destroy(new Error('request timed out')));
+    request.on('error', reject);
+    request.end(body);
+  });
 }
 
 async function exerciseServiceWorker(baseUrl, publicDir) {
@@ -800,8 +862,83 @@ async function validatePwaChecks() {
   }
 }
 
+async function validatePublicUrlChecks() {
+  const publicOrigin = 'https://sim-test.tailnet.example.ts.net:8443';
+  const publicHost = 'sim-test.tailnet.example.ts.net:8443';
+  let server;
+  try {
+    server = await startPwaServer({ INTERVIEW_SIM_PUBLIC_URL: publicOrigin });
+  } catch (error) {
+    record(false, 'server starts with INTERVIEW_SIM_PUBLIC_URL set', messageOf(error));
+    return;
+  }
+  try {
+    record(
+      server.output.includes(`Interview simulator: ${publicOrigin}`),
+      'startup message prints the public origin',
+      server.output.trim().split(/\r?\n/)[0],
+    );
+    const accepted = await httpJson(server.baseUrl, {
+      route: '/api/health',
+      headers: { host: publicHost, origin: publicOrigin },
+    });
+    record(accepted.status === 200, 'public Host and Origin are accepted', `status ${accepted.status}`);
+    const unknownHost = await httpJson(server.baseUrl, {
+      route: '/api/health',
+      headers: { host: 'unexpected.example.ts.net:8443', origin: publicOrigin },
+    });
+    record(unknownHost.status === 403, 'public mode still rejects an unknown Host', `status ${unknownHost.status}`);
+    const unknownOrigin = await httpJson(server.baseUrl, {
+      route: '/api/health',
+      headers: { host: publicHost, origin: 'https://unexpected.example.ts.net:8443' },
+    });
+    record(unknownOrigin.status === 403, 'public mode still rejects an unknown Origin', `status ${unknownOrigin.status}`);
+  } finally {
+    server.child.kill();
+  }
+
+  const defaultOrigin = 'https://sim-default.tailnet.example.ts.net';
+  const defaultHost = 'sim-default.tailnet.example.ts.net';
+  let defaultPortServer;
+  try {
+    defaultPortServer = await startPwaServer({ INTERVIEW_SIM_PUBLIC_URL: defaultOrigin });
+  } catch (error) {
+    record(false, 'server starts with INTERVIEW_SIM_PUBLIC_URL and the default HTTPS port', messageOf(error));
+    return;
+  }
+  try {
+    const bareHost = await httpJson(defaultPortServer.baseUrl, {
+      route: '/api/health',
+      headers: { host: defaultHost, origin: defaultOrigin },
+    });
+    record(bareHost.status === 200, 'default-port public origin accepts the bare host form', `status ${bareHost.status}`);
+  } finally {
+    defaultPortServer.child.kill();
+  }
+
+  const malformed = [
+    ['http://sim-test.tailnet.example.ts.net:8443', 'not https'],
+    ['https://user:pass@sim-test.tailnet.example.ts.net:8443', 'credentials'],
+    ['https://sim-test.tailnet.example.ts.net:8443/sim', 'path'],
+    ['https://sim-test.tailnet.example.ts.net:8443/?mode=phone', 'query'],
+    ['https://sim-test.tailnet.example.ts.net:8443/#app', 'fragment'],
+    ['not a url', 'not a URL'],
+  ];
+  for (const [value, reason] of malformed) {
+    const result = await startServerExpectingFailure(value);
+    const stderr = result.stderr.trim();
+    record(
+      !result.timedOut && result.code === 1 && stderr.includes('INTERVIEW_SIM_PUBLIC_URL') &&
+        stderr.split(/\r?\n/).length === 1,
+      `INTERVIEW_SIM_PUBLIC_URL refuses a malformed value (${reason})`,
+      result.timedOut ? 'server kept running' : `code ${result.code}, stderr: ${stderr}`,
+    );
+  }
+}
+
 async function main() {
   await validatePwaChecks();
+  await validatePublicUrlChecks();
   const jdk = detectJdk({ refresh: true });
   if (!jdk.available) {
     process.stderr.write(`${jdk.installSteps.join('\n')}\n`);

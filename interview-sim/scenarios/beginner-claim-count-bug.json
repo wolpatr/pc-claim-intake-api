@@ -97,7 +97,7 @@
       "name": "the last approved claim is counted",
       "className": "LastApprovedCountedTest",
       "regression": true,
-      "code": "import java.util.List;\n\npublic class LastApprovedCountedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"APPROVED\"),\n                new ClaimCounter.Claim(\"C2\", \"APPROVED\"));\n        TestSupport.eq(2, new ClaimCounter().countApproved(claims), \"approved count\");\n        System.out.println(\"PASS: the last approved claim is counted\");\n    }\n}\n"
+      "code": "import java.util.List;\n\npublic class LastApprovedCountedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"APPROVED\"),\n                new ClaimCounter.Claim(\"C2\", new String(\"APPROVED\")));\n        TestSupport.eq(2, new ClaimCounter().countApproved(claims), \"approved count\");\n        System.out.println(\"PASS: the last approved claim is counted\");\n    }\n}\n"
     },
     {
       "name": "a single approved claim is counted",
@@ -107,7 +107,7 @@
     {
       "name": "non-approved claims are excluded",
       "className": "NonApprovedExcludedTest",
-      "code": "import java.util.List;\n\npublic class NonApprovedExcludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimCounter.Claim(\"C2\", \"APPROVED\"),\n                new ClaimCounter.Claim(\"C3\", \"PENDING\"));\n        TestSupport.eq(1, new ClaimCounter().countApproved(claims), \"only approved counted\");\n        System.out.println(\"PASS: non-approved claims are excluded\");\n    }\n}\n"
+      "code": "import java.util.List;\n\npublic class NonApprovedExcludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimCounter.Claim(\"C2\", \"APPROVED\"),\n                new ClaimCounter.Claim(\"C3\", \"PENDING\"),\n                new ClaimCounter.Claim(\"C4\", \"approved\"));\n        TestSupport.eq(1, new ClaimCounter().countApproved(claims), \"only approved counted\");\n        System.out.println(\"PASS: non-approved claims are excluded\");\n    }\n}\n"
     },
     {
       "name": "an empty list returns zero",
@@ -124,12 +124,12 @@
       {
         "name": "reopened claims are counted",
         "className": "ReopenedCountedTest",
-        "code": "import java.util.List;\n\npublic class ReopenedCountedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"APPROVED\"),\n                new ClaimCounter.Claim(\"C2\", \"REOPENED\"),\n                new ClaimCounter.Claim(\"C3\", \"CLOSED\"));\n        TestSupport.eq(2, new ClaimCounter().countApproved(claims), \"approved plus reopened\");\n        System.out.println(\"PASS: reopened claims are counted\");\n    }\n}\n"
+        "code": "import java.util.List;\n\npublic class ReopenedCountedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"APPROVED\"),\n                new ClaimCounter.Claim(\"C2\", new String(\"REOPENED\")),\n                new ClaimCounter.Claim(\"C3\", \"CLOSED\"));\n        TestSupport.eq(2, new ClaimCounter().countApproved(claims), \"approved plus reopened\");\n        System.out.println(\"PASS: reopened claims are counted\");\n    }\n}\n"
       },
       {
         "name": "closed and pending claims stay out",
         "className": "ClosedStillExcludedTest",
-        "code": "import java.util.List;\n\npublic class ClosedStillExcludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimCounter.Claim(\"C2\", \"REOPENED\"),\n                new ClaimCounter.Claim(\"C3\", \"PENDING\"));\n        TestSupport.eq(1, new ClaimCounter().countApproved(claims), \"only reopened is included\");\n        System.out.println(\"PASS: closed and pending claims stay out\");\n    }\n}\n"
+        "code": "import java.util.List;\n\npublic class ClosedStillExcludedTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimCounter.Claim(\"C1\", \"CLOSED\"),\n                new ClaimCounter.Claim(\"C2\", \"REOPENED\"),\n                new ClaimCounter.Claim(\"C3\", \"PENDING\"),\n                new ClaimCounter.Claim(\"C4\", \"reopened\"));\n        TestSupport.eq(1, new ClaimCounter().countApproved(claims), \"only reopened is included\");\n        System.out.println(\"PASS: closed and pending claims stay out\");\n    }\n}\n"
       },
       {
         "name": "approved claims are still counted after the change",

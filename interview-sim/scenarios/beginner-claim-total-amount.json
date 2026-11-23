@@ -81,7 +81,7 @@
     {
       "name": "mixed statuses total only the approved amounts",
       "className": "MixedStatusTotalTest",
-      "code": "import java.util.List;\n\npublic class MixedStatusTotalTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 1200L),\n                new ClaimTotals.Claim(\"C2\", \"CLOSED\", 500L),\n                new ClaimTotals.Claim(\"C3\", \"APPROVED\", 800L));\n        TestSupport.eq(2000L, new ClaimTotals().approvedTotal(claims), \"approved total ignores closed claims\");\n        System.out.println(\"PASS: mixed statuses total only the approved amounts\");\n    }\n}\n"
+      "code": "import java.util.List;\n\npublic class MixedStatusTotalTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 1200L),\n                new ClaimTotals.Claim(\"C2\", \"CLOSED\", 500L),\n                new ClaimTotals.Claim(\"C3\", new String(\"APPROVED\"), 800L));\n        TestSupport.eq(2000L, new ClaimTotals().approvedTotal(claims), \"approved total ignores closed claims\");\n        System.out.println(\"PASS: mixed statuses total only the approved amounts\");\n    }\n}\n"
     },
     {
       "name": "empty and null lists return zero",
@@ -91,7 +91,7 @@
     {
       "name": "all approved claims are summed",
       "className": "AllApprovedTotalTest",
-      "code": "import java.util.List;\n\npublic class AllApprovedTotalTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 100L),\n                new ClaimTotals.Claim(\"C2\", \"APPROVED\", 250L));\n        TestSupport.eq(350L, new ClaimTotals().approvedTotal(claims), \"all approved\");\n        System.out.println(\"PASS: all approved claims are summed\");\n    }\n}\n"
+      "code": "import java.util.List;\n\npublic class AllApprovedTotalTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 100L),\n                new ClaimTotals.Claim(\"C2\", \"APPROVED\", 250L),\n                new ClaimTotals.Claim(\"C3\", \"approved\", 999L));\n        TestSupport.eq(350L, new ClaimTotals().approvedTotal(claims), \"all approved\");\n        System.out.println(\"PASS: all approved claims are summed\");\n    }\n}\n"
     },
     {
       "name": "no approved claims totals zero",
@@ -108,7 +108,7 @@
       {
         "name": "summary reports the approved total and count",
         "className": "SummaryTotalsTest",
-        "code": "import java.util.List;\n\npublic class SummaryTotalsTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 1200L),\n                new ClaimTotals.Claim(\"C2\", \"CLOSED\", 500L),\n                new ClaimTotals.Claim(\"C3\", \"APPROVED\", 800L),\n                new ClaimTotals.Claim(\"C4\", \"APPROVED\", 100L));\n        var summary = new ClaimTotals().summarize(claims);\n        TestSupport.eq(2100L, summary.totalCents(), \"summary total\");\n        TestSupport.eq(3, summary.approvedCount(), \"approved count\");\n        System.out.println(\"PASS: summary reports the approved total and count\");\n    }\n}\n"
+        "code": "import java.util.List;\n\npublic class SummaryTotalsTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 1200L),\n                new ClaimTotals.Claim(\"C2\", \"CLOSED\", 500L),\n                new ClaimTotals.Claim(\"C3\", \"APPROVED\", 800L),\n                new ClaimTotals.Claim(\"C4\", new String(\"APPROVED\"), 100L));\n        var summary = new ClaimTotals().summarize(claims);\n        TestSupport.eq(2100L, summary.totalCents(), \"summary total\");\n        TestSupport.eq(3, summary.approvedCount(), \"approved count\");\n        System.out.println(\"PASS: summary reports the approved total and count\");\n    }\n}\n"
       },
       {
         "name": "summary handles empty and null lists",
@@ -118,7 +118,7 @@
       {
         "name": "summary agrees with the total method",
         "className": "SummaryAgreesTest",
-        "code": "import java.util.List;\n\npublic class SummaryAgreesTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 700L),\n                new ClaimTotals.Claim(\"C2\", \"PENDING\", 200L));\n        var counter = new ClaimTotals();\n        TestSupport.eq(counter.approvedTotal(claims), counter.summarize(claims).totalCents(), \"summary agrees with total\");\n        TestSupport.eq(1, counter.summarize(claims).approvedCount(), \"pending excluded from count\");\n        System.out.println(\"PASS: summary agrees with the total method\");\n    }\n}\n"
+        "code": "import java.util.List;\n\npublic class SummaryAgreesTest {\n    public static void main(String[] args) {\n        var claims = List.of(\n                new ClaimTotals.Claim(\"C1\", \"APPROVED\", 700L),\n                new ClaimTotals.Claim(\"C2\", \"PENDING\", 200L),\n                new ClaimTotals.Claim(\"C3\", \"approved\", 400L));\n        var counter = new ClaimTotals();\n        TestSupport.eq(counter.approvedTotal(claims), counter.summarize(claims).totalCents(), \"summary agrees with total\");\n        TestSupport.eq(1, counter.summarize(claims).approvedCount(), \"pending excluded from count\");\n        System.out.println(\"PASS: summary agrees with the total method\");\n    }\n}\n"
       }
     ]
   },

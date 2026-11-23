@@ -361,7 +361,7 @@ export const METHOD_GROUPS = [
         signature: 'insert(int offset, String text)',
         returns: 'StringBuilder',
         description: 'Inserts text at a position and shifts the rest right.',
-        example: 'new StringBuilder("ja").insert(2, "v")  // "jva"',
+        example: 'new StringBuilder("ja").insert(1, "v")  // "jva"',
       },
       {
         id: 'stringbuilder-deleteCharAt',

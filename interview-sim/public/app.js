@@ -53,7 +53,7 @@ const state = {
   hints: [],
   clarify: { asked: 0, matched: new Set() },
   changeLoaded: false,
-  changeDraftRestored: false,
+  editorDraftPhase: 'implement',
   savedImplementCode: null,
   baseRun: null,
   changeRun: null,
@@ -542,7 +542,7 @@ function draftTimerId(scenarioId, kind) {
 }
 
 function draftPhaseFor(kind) {
-  return kind === 'editor' && currentPhase() === 'change' ? 'change' : 'implement';
+  return kind === 'editor' ? state.editorDraftPhase : 'implement';
 }
 
 function cancelDraftSave(scenarioId, kind) {
@@ -586,6 +586,11 @@ function restoredDraft(kind, phase) {
   const scenarioId = state.scenario?.id;
   if (!scenarioId) return null;
   return readDraft(draftStorage(), scenarioId, phase, kind);
+}
+
+function implementEditorContent(scenario) {
+  const saved = restoredDraft('editor', 'implement');
+  return saved && saved.text !== scenario.starterCode ? saved.text : scenario.starterCode;
 }
 
 function applyOfflineUI() {
@@ -845,7 +850,7 @@ function startSession(scenario, minutes, { resetDrafts = false } = {}) {
   state.hints = [];
   state.clarify = { asked: 0, matched: new Set() };
   state.changeLoaded = false;
-  state.changeDraftRestored = false;
+  state.editorDraftPhase = 'implement';
   state.savedImplementCode = null;
   state.baseRun = null;
   state.changeRun = null;
@@ -877,9 +882,7 @@ function startSession(scenario, minutes, { resetDrafts = false } = {}) {
     ? 'This is a constraint change or extension question, not a code delta. Answer it in your design notes.'
     : 'You can extend the code already in the editor, or load the change-request starter. Your implementation is saved if you switch.';
   $('changeCard').classList.add('hidden');
-  const savedCode = resetDrafts ? null : restoredDraft('editor', 'implement');
-  const restoredCode = savedCode && savedCode.text !== scenario.starterCode ? savedCode.text : null;
-  $('editor').value = restoredCode ?? scenario.starterCode;
+  $('editor').value = resetDrafts ? scenario.starterCode : implementEditorContent(scenario);
   applyAssistForRound(scenario.roundType);
   if (assist) assist.close();
 
@@ -1119,8 +1122,7 @@ function jumpToPhase(index) {
   }
 
   state.running = true;
-  if (key === 'change' && !state.changeDraftRestored) {
-    state.changeDraftRestored = true;
+  if (key === 'change') {
     const savedChange = restoredDraft('editor', 'change');
     if (savedChange && savedChange.text !== $('editor').value) {
       state.savedImplementCode = $('editor').value;
@@ -1128,7 +1130,19 @@ function jumpToPhase(index) {
       state.changeLoaded = true;
       $('restoreCodeBtn').classList.remove('hidden');
       if (assist) assist.close();
+    } else {
+      $('restoreCodeBtn').classList.add('hidden');
     }
+    state.editorDraftPhase = 'change';
+  } else {
+    const implementContent = implementEditorContent(state.scenario);
+    if ($('editor').value !== implementContent) {
+      $('editor').value = implementContent;
+      if (assist) assist.close();
+    }
+    state.editorDraftPhase = 'implement';
+    state.changeLoaded = false;
+    $('restoreCodeBtn').classList.add('hidden');
   }
   if (key === 'change') {
     const design = state.scenario.roundType === 'design';
@@ -1296,6 +1310,7 @@ function loadChangeStarter() {
     state.savedImplementCode = $('editor').value;
   }
   $('editor').value = state.scenario.changeRequest.starterCode;
+  state.editorDraftPhase = 'change';
   saveDraftNow('editor', $('editor').value);
   if (assist) assist.close();
   state.changeLoaded = true;
@@ -1306,6 +1321,7 @@ function loadChangeStarter() {
 function restoreCode() {
   if (!state.savedImplementCode) return;
   $('editor').value = state.savedImplementCode;
+  state.editorDraftPhase = 'implement';
   saveDraftNow('editor', $('editor').value);
   if (assist) assist.close();
   state.changeLoaded = false;
@@ -1319,6 +1335,7 @@ function resetCode() {
   const source = useChange ? state.scenario.changeRequest.starterCode : state.scenario.starterCode;
   if (!window.confirm('Replace the editor contents with the starter code?')) return;
   $('editor').value = source;
+  state.editorDraftPhase = useChange ? 'change' : 'implement';
   saveDraftNow('editor', $('editor').value);
   if (assist) assist.close();
   state.changeLoaded = Boolean(useChange);

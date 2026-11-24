@@ -1077,6 +1077,13 @@ function validateDraftPersistenceChecks() {
     readDraft(reopened, 'reload-demo', 'implement', 'editor')?.text === offlineCode,
     'the diagnosis draft does not replace the editor draft',
   );
+  const editedImplement = 'class Intake {\n  int reviewed = 1;\n}';
+  writeDraft(reopened, 'reload-demo', 'implement', 'editor', editedImplement);
+  record(
+    readDraft(reopened, 'reload-demo', 'implement', 'editor')?.text === editedImplement &&
+      readDraft(reopened, 'reload-demo', 'change', 'editor')?.text === changeCode,
+    'editing the implement draft leaves the change draft untouched',
+  );
   record(
     clearDrafts(reopened, 'reload-demo') === true &&
       readDraft(reopened, 'reload-demo', 'implement', 'editor') === null &&

@@ -2501,8 +2501,6 @@ function openRefreshers() {
   if (!refreshersVisible()) {
     refreshersReturn = {
       screen: exam.active ? 'exam' : state.active ? 'session' : 'setup',
-      debriefOpen: $('debriefDialog').open,
-      reportOpen: $('examReportDialog').open,
       sessionRunning: state.running,
       examRunning: exam.running,
     };
@@ -2535,8 +2533,6 @@ function closeRefreshers() {
   $('sessionScreen').classList.toggle('hidden', target !== 'session');
   $('examScreen').classList.toggle('hidden', target !== 'exam');
   $('exitBtn').classList.toggle('hidden', !state.active || exam.active);
-  if (snapshot?.debriefOpen && !$('debriefDialog').open) $('debriefDialog').showModal();
-  if (snapshot?.reportOpen && !$('examReportDialog').open) $('examReportDialog').showModal();
   if (state.active && snapshot?.sessionRunning && !document.hidden && currentPhase() !== 'debrief') {
     state.running = true;
     state.lastTick = performance.now();

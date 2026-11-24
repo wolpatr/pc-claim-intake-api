@@ -2101,6 +2101,7 @@ main {
   max-width: min(430px, calc(100vw - 32px));
   max-height: min(330px, 52vh);
   overflow-y: auto;
+  touch-action: pan-y;
   padding: 5px;
   border: 1px solid var(--border);
   border-radius: 12px;

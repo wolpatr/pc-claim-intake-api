@@ -100,7 +100,12 @@ function splitTopLevel(text, separator) {
   return parts.map((part) => part.trim()).filter(Boolean);
 }
 
-function stripNoise(source) {
+function analyze(source) {
+  const states = new Array(source.length + 1);
+  states[0] = 'code';
+  const mark = (position, value) => {
+    if (position <= source.length) states[position] = value;
+  };
   let out = '';
   let index = 0;
   let state = 'code';
@@ -112,28 +117,35 @@ function stripNoise(source) {
         state = 'line';
         out += '  ';
         index += 2;
+        mark(index - 1, 'line');
+        mark(index, 'line');
         continue;
       }
       if (char === '/' && next === '*') {
         state = 'block';
         out += '  ';
         index += 2;
+        mark(index - 1, 'block');
+        mark(index, 'block');
         continue;
       }
       if (char === '"') {
         state = 'string';
         out += ' ';
         index += 1;
+        mark(index, 'string');
         continue;
       }
       if (char === "'") {
         state = 'char';
         out += ' ';
         index += 1;
+        mark(index, 'char');
         continue;
       }
       out += char;
       index += 1;
+      mark(index, 'code');
       continue;
     }
     if (state === 'line') {
@@ -144,6 +156,7 @@ function stripNoise(source) {
         out += ' ';
       }
       index += 1;
+      mark(index, state);
       continue;
     }
     if (state === 'block') {
@@ -151,27 +164,44 @@ function stripNoise(source) {
         state = 'code';
         out += '  ';
         index += 2;
+        mark(index - 1, 'block');
+        mark(index, 'code');
       } else {
         out += char === '\n' ? '\n' : ' ';
         index += 1;
+        mark(index, 'block');
       }
       continue;
     }
     if (char === '\\') {
       out += '  ';
       index += 2;
+      mark(index - 1, state);
+      mark(index, state);
       continue;
     }
     if ((state === 'string' && char === '"') || (state === 'char' && char === "'")) {
       state = 'code';
       out += ' ';
       index += 1;
+      mark(index, 'code');
       continue;
     }
     out += char === '\n' ? '\n' : ' ';
     index += 1;
+    mark(index, state);
   }
-  return out;
+  return { clean: out, states };
+}
+
+function stripNoise(source) {
+  return analyze(source).clean;
+}
+
+function precedingBackslashes(text, position) {
+  let count = 0;
+  for (let index = position - 1; index >= 0 && text[index] === '\\'; index -= 1) count += 1;
+  return count;
 }
 
 function findMatching(text, openIndex, open, close) {
@@ -690,6 +720,7 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
         pointerPress = {
           x: event.clientX,
           y: event.clientY,
+          scrollTop: popup.scrollTop,
           pointerId: event.pointerId,
           option,
         };
@@ -698,6 +729,7 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
         const press = pointerPress;
         if (!press || press.pointerId !== event.pointerId) return;
         pointerPress = null;
+        if (popup.scrollTop !== press.scrollTop) return;
         if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) return;
         event.preventDefault();
         accept(press.option);
@@ -740,8 +772,8 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
       close();
       return;
     }
-    const clean = stripNoise(value);
-    if (start > 0 && clean[start - 1] !== value[start - 1]) {
+    const { states } = analyze(value);
+    if (states[start] !== 'code') {
       close();
       return;
     }
@@ -809,15 +841,31 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
     const start = editor.selectionStart;
     const end = editor.selectionEnd;
     const value = editor.value;
+    const needsContext = Boolean(OPENERS[key]) || CLOSERS.has(key) || key === 'Backspace' || key === 'Enter';
+    if (!needsContext) return false;
 
-    if (OPENERS[key]) {
-      event.preventDefault();
-      if (CLOSERS.has(key) && start === end && value[start] === key) {
+    const { states } = analyze(value);
+    const codeAtStart = states[start] === 'code';
+    const codeAtEnd = states[end] === 'code';
+    const codeBeforeStart = start > 0 ? states[start - 1] === 'code' : true;
+    const quote = key === '"';
+
+    if (start === end && value[start] === key) {
+      const skipQuote = quote
+        && (codeAtStart || states[start] === 'string')
+        && precedingBackslashes(value, start) % 2 === 0;
+      const skipCloser = !quote && CLOSERS.has(key) && codeAtStart;
+      if (skipQuote || skipCloser) {
+        event.preventDefault();
         setCaret(start + 1);
         return true;
       }
-      const selectedText = value.slice(start, end);
+    }
+
+    if (OPENERS[key] && codeAtStart && codeAtEnd) {
+      event.preventDefault();
       const closer = OPENERS[key];
+      const selectedText = value.slice(start, end);
       if (selectedText) {
         replace(start, end, `${key}${selectedText}${closer}`);
         setCaret(start + 1 + selectedText.length + 1);
@@ -828,16 +876,10 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
       return true;
     }
 
-    if (CLOSERS.has(key) && start === end && value[start] === key) {
-      event.preventDefault();
-      setCaret(start + 1);
-      return true;
-    }
-
-    if (key === 'Backspace' && start === end && start > 0) {
+    if (key === 'Backspace' && start === end && start > 0 && codeBeforeStart) {
       const before = value[start - 1];
       const after = value[start];
-      if (OPENERS[before] === after) {
+      if (OPENERS[before] === after && !(before === '"' && precedingBackslashes(value, start - 1) % 2 === 1)) {
         event.preventDefault();
         replace(start - 1, start + 1, '');
         setCaret(start - 1);
@@ -845,7 +887,7 @@ export function createEditorAssist({ editor, popup, onStateChange = () => {} }) 
       }
     }
 
-    if (key === 'Enter' && !event.shiftKey) {
+    if (key === 'Enter' && !event.shiftKey && codeAtStart) {
       const lineStart = value.lastIndexOf('\n', start - 1) + 1;
       const lineIndent = (value.slice(lineStart, start).match(/^\s*/) || [''])[0];
       const previous = value[start - 1];

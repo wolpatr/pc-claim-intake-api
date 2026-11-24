@@ -882,7 +882,9 @@ function startSession(scenario, minutes, { resetDrafts = false } = {}) {
     ? 'This is a constraint change or extension question, not a code delta. Answer it in your design notes.'
     : 'You can extend the code already in the editor, or load the change-request starter. Your implementation is saved if you switch.';
   $('changeCard').classList.add('hidden');
-  $('editor').value = resetDrafts ? scenario.starterCode : implementEditorContent(scenario);
+  const implementContent = resetDrafts ? scenario.starterCode : implementEditorContent(scenario);
+  const restoredCode = implementContent !== scenario.starterCode;
+  $('editor').value = implementContent;
   applyAssistForRound(scenario.roundType);
   if (assist) assist.close();
 

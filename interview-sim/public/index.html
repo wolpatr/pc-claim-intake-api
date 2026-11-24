@@ -28,12 +28,15 @@
       <span id="jdkChip" class="chip">JDK checking</span>
       <span id="aiChip" class="chip">Interviewer checking</span>
       <button id="autoSpeakBtn" type="button" class="ghost" aria-pressed="false" title="Speak interviewer messages aloud">Auto-speak: off</button>
+      <button id="refreshersBtn" type="button" class="ghost">Refreshers</button>
       <button id="historyBtn" type="button" class="ghost">History</button>
       <button id="exitBtn" type="button" class="ghost hidden">Exit session</button>
     </div>
   </header>
 
   <main>
+    <div id="offlineBanner" class="offline-banner hidden" role="status"></div>
+
     <section id="setupScreen" class="screen">
       <div class="hero">
         <div>
@@ -55,6 +58,15 @@
         <h3>Java is required for coding and debugging rounds</h3>
         <p class="muted">Design rounds still run without a JDK; a detected JDK only enables the optional sketch-compile check, which is informational.</p>
         <ul id="installSteps"></ul>
+      </div>
+
+      <div class="refresher-entry">
+        <div>
+          <p class="eyebrow">Offline refreshers</p>
+          <h3>Forgot a method? Look it up on the bus.</h3>
+          <p class="muted">Short Java lessons and common-method cheat sheets for String, List, Map, and more. They download with the app and work with no network.</p>
+        </div>
+        <button id="openRefreshersBtn" type="button" class="primary">Open refreshers</button>
       </div>
 
       <div class="exam-entry">
@@ -140,6 +152,7 @@
               <code id="fileNameLabel">Claim.java</code>
             </div>
             <div class="editor-actions">
+              <button id="assistToggle" type="button" class="ghost" aria-pressed="true" title="Toggle IntelliJ-style editor help">Writing help: on</button>
               <button id="loadChangeBtn" type="button" class="ghost hidden">Load change starter</button>
               <button id="restoreCodeBtn" type="button" class="ghost hidden">Restore my code</button>
               <button id="resetCodeBtn" type="button" class="ghost">Reset starter</button>
@@ -166,7 +179,10 @@
             <div id="changeStatement" class="markdown"></div>
             <p id="changeHelp" class="muted">You can extend the code already in the editor, or load the change-request starter. Your implementation is saved if you switch.</p>
           </div>
-          <textarea id="editor" class="editor" spellcheck="false" aria-label="Java code or design notes editor"></textarea>
+          <div class="editor-wrap">
+            <textarea id="editor" class="editor" spellcheck="false" aria-label="Java code or design notes editor" aria-autocomplete="list" aria-controls="editorPopup" aria-expanded="false"></textarea>
+            <div id="editorPopup" class="editor-popup hidden" role="listbox" aria-label="Java suggestions"></div>
+          </div>
           <div id="diagnosisCard" class="round-card diagnosis hidden">
             <div class="change-head">
               <span class="tag">Root cause</span>
@@ -185,6 +201,45 @@
             </div>
           </div>
         </section>
+      </div>
+    </section>
+
+    <section id="refreshersScreen" class="screen hidden">
+      <div class="refresher-shell">
+        <div class="refresher-head">
+          <div>
+            <p class="eyebrow">Offline practice</p>
+            <h2>Refreshers</h2>
+            <p class="lede">Short Java lessons in a beginner-friendly order, plus common-method cheat sheets. Everything here is static and works with no network.</p>
+          </div>
+          <button id="refreshersBackBtn" type="button" class="ghost">Back to start</button>
+        </div>
+
+        <div class="refresher-toolbar">
+          <label class="search-field" for="methodSearch">
+            <span>Find a method</span>
+            <input id="methodSearch" type="search" autocomplete="off" placeholder="isEmpty, getOrDefault, parseInt...">
+          </label>
+          <p id="methodSearchStatus" class="muted" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="refresher-grid">
+          <section class="panel refresher-panel" aria-labelledby="lessonHeading">
+            <div class="refresher-panel-head">
+              <h3 id="lessonHeading">Short lessons</h3>
+              <p class="muted">Variables through generics, in the order Bro Code builds them.</p>
+            </div>
+            <div id="lessonList" class="lesson-list"></div>
+          </section>
+
+          <section class="panel refresher-panel" aria-labelledby="methodsHeading">
+            <div class="refresher-panel-head">
+              <h3 id="methodsHeading">Common-method cheat sheets</h3>
+              <p class="muted">Signatures, one-line descriptions, and a tiny example for each method.</p>
+            </div>
+            <div id="methodGroups" class="method-groups"></div>
+          </section>
+        </div>
       </div>
     </section>
 

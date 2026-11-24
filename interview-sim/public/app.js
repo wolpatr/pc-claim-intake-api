@@ -1,4 +1,7 @@
 import { criterionThreshold, gradeForPercentage, keywordCoverage } from './scoring.mjs';
+import { createEditorAssist } from './editor-assist.js';
+import { clearDrafts, readDraft, writeDraft } from './draft-store.mjs';
+import { LESSONS, METHOD_GROUPS } from './refreshers.mjs';
 
 const PHASE_SETS = {
   coding: [
@@ -50,6 +53,7 @@ const state = {
   hints: [],
   clarify: { asked: 0, matched: new Set() },
   changeLoaded: false,
+  editorDraftPhase: 'implement',
   savedImplementCode: null,
   baseRun: null,
   changeRun: null,
@@ -64,7 +68,10 @@ const state = {
   pendingRecord: null,
   sessionToken: 0,
   sessionId: null,
+  offline: false,
 };
+
+let assist = null;
 
 const exam = {
   active: false,
@@ -93,6 +100,11 @@ const exam = {
 };
 
 const AUTO_SPEAK_KEY = 'interview-sim.auto-speak';
+const ASSIST_KEY = 'interview-sim.editor-assist';
+const ASSIST_DESIGN_KEY = 'interview-sim.editor-assist.design';
+const SCENARIO_CACHE_KEY = 'interview-sim.cache.scenarios.v1';
+const DRAFT_SAVE_DELAY = 400;
+const OFFLINE_MESSAGE = 'Needs the local server. Your draft is saved automatically and restored after a reload; start it with node interview-sim/server.mjs and reload.';
 const voice = {
   autoSpeak: false,
   recognition: null,
@@ -447,6 +459,160 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.add('hidden'), 6000);
 }
 
+function readStoredFlag(key, fallback) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === '1' || raw === 'on') return true;
+    if (raw === '0' || raw === 'off') return false;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storeStoredFlag(key, value) {
+  try {
+    window.localStorage.setItem(key, value ? '1' : '0');
+  } catch {}
+}
+
+function assistPreferenceKey(roundType) {
+  return roundType === 'design' ? ASSIST_DESIGN_KEY : ASSIST_KEY;
+}
+
+function readAssistEnabled(roundType) {
+  return readStoredFlag(assistPreferenceKey(roundType), roundType !== 'design');
+}
+
+function storeAssistEnabled(roundType, enabled) {
+  storeStoredFlag(assistPreferenceKey(roundType), enabled);
+}
+
+function updateAssistButton() {
+  const button = $('assistToggle');
+  if (!button || !assist) return;
+  const enabled = assist.isEnabled();
+  button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  button.textContent = `Writing help: ${enabled ? 'on' : 'off'}`;
+  button.title = enabled
+    ? 'IntelliJ-style suggestions, auto-close, and live templates are on'
+    : 'Writing help is off; Tab still inserts four spaces';
+}
+
+function applyAssistForRound(roundType) {
+  if (!assist) return;
+  assist.setEnabled(readAssistEnabled(roundType));
+  updateAssistButton();
+}
+
+function readScenarioCache() {
+  try {
+    const raw = window.localStorage.getItem(SCENARIO_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.scenarios) || !parsed.scenarios.length) return null;
+    return parsed.scenarios;
+  } catch {
+    return null;
+  }
+}
+
+function writeScenarioCache(scenarios) {
+  try {
+    window.localStorage.setItem(SCENARIO_CACHE_KEY, JSON.stringify({
+      version: 1,
+      savedAt: new Date().toISOString(),
+      scenarios,
+    }));
+  } catch {}
+}
+
+const draftTimers = new Map();
+
+function draftStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function draftTimerId(scenarioId, kind) {
+  return `${scenarioId}:${kind}`;
+}
+
+function draftPhaseFor(kind) {
+  return kind === 'editor' ? state.editorDraftPhase : 'implement';
+}
+
+function cancelDraftSave(scenarioId, kind) {
+  const id = draftTimerId(scenarioId, kind);
+  const entry = draftTimers.get(id);
+  if (!entry) return;
+  clearTimeout(entry.timer);
+  draftTimers.delete(id);
+}
+
+function flushDraftSaves() {
+  for (const [id, entry] of draftTimers) {
+    clearTimeout(entry.timer);
+    draftTimers.delete(id);
+    writeDraft(draftStorage(), entry.scenarioId, entry.phase, entry.kind, entry.text);
+  }
+}
+
+function saveDraftNow(kind, text) {
+  const scenarioId = state.scenario?.id;
+  if (!scenarioId) return;
+  const phase = draftPhaseFor(kind);
+  cancelDraftSave(scenarioId, kind);
+  writeDraft(draftStorage(), scenarioId, phase, kind, text);
+}
+
+function scheduleDraftSave(kind, text) {
+  const scenarioId = state.scenario?.id;
+  if (!scenarioId) return;
+  const phase = draftPhaseFor(kind);
+  cancelDraftSave(scenarioId, kind);
+  const id = draftTimerId(scenarioId, kind);
+  const timer = setTimeout(() => {
+    draftTimers.delete(id);
+    writeDraft(draftStorage(), scenarioId, phase, kind, text);
+  }, DRAFT_SAVE_DELAY);
+  draftTimers.set(id, { timer, scenarioId, phase, kind, text });
+}
+
+function restoredDraft(kind, phase) {
+  const scenarioId = state.scenario?.id;
+  if (!scenarioId) return null;
+  return readDraft(draftStorage(), scenarioId, phase, kind);
+}
+
+function implementEditorContent(scenario) {
+  const saved = restoredDraft('editor', 'implement');
+  return saved && saved.text !== scenario.starterCode ? saved.text : scenario.starterCode;
+}
+
+function applyOfflineUI() {
+  const banner = $('offlineBanner');
+  if (banner) {
+    banner.classList.toggle('hidden', !state.offline);
+    if (state.offline) {
+      banner.textContent = 'Offline mode. Refreshers, lessons, and the editor work without a server, and your draft is saved automatically and restored when you reload online. Run tests, the interviewer, exams, and history need the local server.';
+    }
+  }
+  const history = $('historyBtn');
+  if (history) {
+    history.disabled = state.offline;
+    history.title = state.offline ? OFFLINE_MESSAGE : 'Show local progress';
+  }
+  const exam = $('startExamBtn');
+  if (exam) {
+    exam.disabled = state.offline;
+    exam.title = state.offline ? OFFLINE_MESSAGE : '';
+  }
+}
+
 function clock(seconds, roundUp = true) {
   const safe = Math.max(0, roundUp ? Math.ceil(seconds) : Math.floor(seconds));
   const minutes = Math.floor(safe / 60);
@@ -499,6 +665,17 @@ function renderStatus() {
   }
 
   const aiChip = $('aiChip');
+  if (state.offline) {
+    jdkChip.textContent = 'Offline · no local server';
+    jdkChip.className = 'chip bad';
+    aiChip.textContent = 'Offline';
+    aiChip.className = 'chip';
+    $('jdkWarning').classList.add('hidden');
+    $('installSteps').innerHTML = '';
+    $('aiModeNote').textContent = 'Offline mode: cached scenarios, the editor, and refreshers work, and your draft is saved automatically. Start the local server and reload to run tests, ask the interviewer, take an exam, or view history; the draft is restored.';
+    $('scenarioCount').textContent = String(state.scenarios.length || 0);
+    return;
+  }
   if (state.ai?.configured) {
     aiChip.textContent = `AI interviewer · ${state.ai.model}`;
     aiChip.className = 'chip ok';
@@ -534,7 +711,7 @@ function renderScenarios() {
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'scenario-card';
-    card.disabled = !state.jdk?.available && scenario.roundType !== 'design';
+    card.disabled = !state.offline && !state.jdk?.available && scenario.roundType !== 'design';
     card.dataset.scenarioId = scenario.id;
     card.dataset.roundType = scenario.roundType;
 
@@ -567,9 +744,11 @@ function renderScenarios() {
     const start = document.createElement('div');
     start.className = 'card-start';
     const startText = document.createElement('span');
-    startText.textContent = state.jdk?.available
-      ? 'Preview and start'
-      : (scenario.roundType === 'design' ? 'Preview and start (no JDK needed)' : 'JDK required');
+    startText.textContent = state.offline
+      ? 'Open offline · write code'
+      : state.jdk?.available
+        ? 'Preview and start'
+        : (scenario.roundType === 'design' ? 'Preview and start (no JDK needed)' : 'JDK required');
     const arrow = document.createElement('span');
     arrow.textContent = '->';
     start.append(startText, arrow);
@@ -626,24 +805,31 @@ function openBriefing(scenario) {
 
   const design = scenario.roundType === 'design';
   const startBtn = $('startSessionBtn');
-  startBtn.disabled = !state.jdk?.available && !design;
-  startBtn.textContent = state.jdk?.available || design ? 'Start session' : 'Install a JDK first';
-  $('briefJdkNote').textContent = design
-    ? (state.jdk?.available
-      ? `Detected ${state.jdk.version} via ${state.jdk.source}. A class sketch is compiled as an informational signal; design notes are enough.`
-      : 'Design rounds need no JDK. Write design notes or a class sketch; a compiled sketch is informational only and does not affect the score.')
-    : (state.jdk?.available
-      ? `Detected ${state.jdk.version} via ${state.jdk.source}. Code is compiled with --release 17.`
-      : 'No JDK detected. Follow the install steps on the previous screen, then restart the simulator.');
+  startBtn.disabled = !state.offline && !state.jdk?.available && !design;
+  startBtn.textContent = state.offline
+    ? 'Start offline session'
+    : state.jdk?.available || design ? 'Start session' : 'Install a JDK first';
+  $('briefJdkNote').textContent = state.offline
+    ? 'Offline: the editor, writing help, and refreshers work, and your draft is saved automatically and restored after a reload. Running tests, the interviewer, the debrief, exams, and history need the local server.'
+    : design
+      ? (state.jdk?.available
+        ? `Detected ${state.jdk.version} via ${state.jdk.source}. A class sketch is compiled as an informational signal; design notes are enough.`
+        : 'Design rounds need no JDK. Write design notes or a class sketch; a compiled sketch is informational only and does not affect the score.')
+      : (state.jdk?.available
+        ? `Detected ${state.jdk.version} via ${state.jdk.source}. Code is compiled with --release 17.`
+        : 'No JDK detected. Follow the install steps on the previous screen, then restart the simulator.');
 
   $('briefingDialog').showModal();
 }
 
-function startSession(scenario, minutes) {
-  if (!state.jdk?.available && scenario.roundType !== 'design') {
+function startSession(scenario, minutes, { resetDrafts = false } = {}) {
+  if (!state.offline && !state.jdk?.available && scenario.roundType !== 'design') {
     showToast('A JDK is required before starting a coding or debugging session.');
     return;
   }
+  flushDraftSaves();
+  if (resetDrafts) clearDrafts(draftStorage(), scenario.id);
+  hideRefreshers();
   state.scenario = scenario;
   state.minutes = { ...minutes };
   state.budgets = {};
@@ -664,6 +850,7 @@ function startSession(scenario, minutes) {
   state.hints = [];
   state.clarify = { asked: 0, matched: new Set() };
   state.changeLoaded = false;
+  state.editorDraftPhase = 'implement';
   state.savedImplementCode = null;
   state.baseRun = null;
   state.changeRun = null;
@@ -695,13 +882,20 @@ function startSession(scenario, minutes) {
     ? 'This is a constraint change or extension question, not a code delta. Answer it in your design notes.'
     : 'You can extend the code already in the editor, or load the change-request starter. Your implementation is saved if you switch.';
   $('changeCard').classList.add('hidden');
-  $('editor').value = scenario.starterCode;
+  const implementContent = resetDrafts ? scenario.starterCode : implementEditorContent(scenario);
+  const restoredCode = implementContent !== scenario.starterCode;
+  $('editor').value = implementContent;
+  applyAssistForRound(scenario.roundType);
+  if (assist) assist.close();
 
   $('reproductionCard').classList.toggle('hidden', !scenario.reproductionNote);
   $('reproductionNote').textContent = scenario.reproductionNote || '';
   $('diagnosisCard').classList.toggle('hidden', scenario.roundType !== 'debugging');
   $('diagnosisTitle').textContent = scenario.diagnosis?.prompt || 'Explain the root cause in your own words.';
-  $('diagnosisInput').value = '';
+  const savedDiagnosis = scenario.roundType === 'debugging' && !resetDrafts ? restoredDraft('diagnosis', 'implement') : null;
+  const restoredDiagnosis = savedDiagnosis?.text ? savedDiagnosis.text : null;
+  $('diagnosisInput').value = restoredDiagnosis || '';
+  state.diagnosisText = restoredDiagnosis || '';
   $('diagnosisInput').disabled = false;
   $('designCard').classList.toggle('hidden', scenario.roundType !== 'design');
   const constraints = $('designConstraints');
@@ -713,11 +907,14 @@ function startSession(scenario, minutes) {
   }
 
   $('chatLog').innerHTML = '';
-  $('consoleOutput').innerHTML = scenario.roundType === 'design'
-    ? '<p class="muted">Design notes do not need to compile. Press Check sketch to compile an optional class sketch; the result is informational.</p>'
-    : '<p class="muted">Run the tests to see compile output and per-test results.</p>';
-  $('consoleStatus').textContent = 'Not run yet';
+  $('consoleOutput').innerHTML = state.offline
+    ? `<p class="compile-fail">${OFFLINE_MESSAGE}</p>`
+    : scenario.roundType === 'design'
+      ? '<p class="muted">Design notes do not need to compile. Press Check sketch to compile an optional class sketch; the result is informational.</p>'
+      : '<p class="muted">Run the tests to see compile output and per-test results.</p>';
+  $('consoleStatus').textContent = state.offline ? 'Needs local server' : 'Not run yet';
   $('clarifyInput').value = '';
+  $('clarifyInput').placeholder = state.offline ? 'Needs the local server' : 'Ask a clarifying question...';
   $('clarifyInput').disabled = false;
   $('clarifyForm').querySelector('button[type="submit"]').disabled = false;
   stopDictation(true, true);
@@ -735,6 +932,15 @@ function startSession(scenario, minutes) {
 
   addMessage('interviewer', scenario.intro, { meta: 'Opening' });
   addMessage('interviewer', scenario.phasePrompts.brief, { meta: phasesFor(scenario.roundType)[0].label });
+  if (state.offline) {
+    addMessage('system', 'Offline mode: the editor, writing help, and refreshers work, and your draft is saved automatically. Test runs, interviewer answers, and the debrief need the local server; reload once it is running and the draft is restored.');
+  }
+  if (restoredCode) {
+    addMessage('system', 'Restored your saved draft for this scenario. It autosaves as you type.');
+  }
+  if (restoredDiagnosis) {
+    addMessage('system', 'Restored your saved diagnosis note.');
+  }
   updateClarifyCounter();
   updateHintButton();
   renderPhaseUI();
@@ -749,6 +955,10 @@ function startTicker() {
 
 function tick() {
   if (!state.active || !state.running) return;
+  if (refreshersVisible()) {
+    state.lastTick = performance.now();
+    return;
+  }
   const now = performance.now();
   const delta = Math.max(0, (now - state.lastTick) / 1000);
   state.lastTick = now;
@@ -814,7 +1024,8 @@ function renderPhaseUI() {
   const hasChangeStarter = Boolean(state.scenario?.changeRequest?.starterCode);
   $('loadChangeBtn').classList.toggle('hidden', key !== 'change' || !hasChangeStarter);
   $('changeCard').classList.toggle('hidden', state.phaseIndex < 3);
-  $('runBtn').disabled = state.runBusy || key === 'debrief';
+  $('runBtn').disabled = state.runBusy || key === 'debrief' || state.offline;
+  $('runBtn').title = state.offline ? OFFLINE_MESSAGE : '';
   $('runBtn').textContent = state.runBusy
     ? 'Running...'
     : design
@@ -823,10 +1034,11 @@ function renderPhaseUI() {
   const closed = key === 'debrief';
   if (closed) stopDictation(true, true);
   $('hintBtn').disabled = closed || state.hints.length >= (state.scenario?.hints?.length || 3);
-  $('probeBtn').disabled = closed || state.probeBusy;
-  $('clarifyInput').disabled = closed;
-  $('clarifyForm').querySelector('button[type="submit"]').disabled = closed;
-  updateMicUI(closed || state.clarifyBusy);
+  $('probeBtn').disabled = closed || state.probeBusy || state.offline;
+  $('probeBtn').title = state.offline ? OFFLINE_MESSAGE : 'Ask the interviewer for an adaptive follow-up';
+  $('clarifyInput').disabled = closed || state.offline;
+  $('clarifyForm').querySelector('button[type="submit"]').disabled = closed || state.offline;
+  updateMicUI(closed || state.clarifyBusy || state.offline);
   $('resetPhaseBtn').disabled = closed;
   $('diagnosisCard').classList.toggle('hidden', state.scenario?.roundType !== 'debugging' || closed);
   $('diagnosisInput').disabled = closed;
@@ -891,6 +1103,7 @@ function updateHintButton() {
 
 function jumpToPhase(index) {
   if (!state.active) return;
+  flushDraftSaves();
   const phases = phaseList();
   const target = Math.max(0, Math.min(phases.length - 1, index));
   if (target === state.phaseIndex) {
@@ -911,6 +1124,28 @@ function jumpToPhase(index) {
   }
 
   state.running = true;
+  if (key === 'change') {
+    const savedChange = restoredDraft('editor', 'change');
+    if (savedChange && savedChange.text !== $('editor').value) {
+      state.savedImplementCode = $('editor').value;
+      $('editor').value = savedChange.text;
+      state.changeLoaded = true;
+      $('restoreCodeBtn').classList.remove('hidden');
+      if (assist) assist.close();
+    } else {
+      $('restoreCodeBtn').classList.add('hidden');
+    }
+    state.editorDraftPhase = 'change';
+  } else {
+    const implementContent = implementEditorContent(state.scenario);
+    if ($('editor').value !== implementContent) {
+      $('editor').value = implementContent;
+      if (assist) assist.close();
+    }
+    state.editorDraftPhase = 'implement';
+    state.changeLoaded = false;
+    $('restoreCodeBtn').classList.add('hidden');
+  }
   if (key === 'change') {
     const design = state.scenario.roundType === 'design';
     const detail = design
@@ -961,6 +1196,10 @@ async function submitClarify(event) {
   const input = $('clarifyInput');
   const question = input.value.trim();
   if (!question || state.clarifyBusy || currentPhase() === 'debrief') return;
+  if (state.offline) {
+    addMessage('system', OFFLINE_MESSAGE);
+    return;
+  }
   stopDictation(true, true);
 
   const token = state.sessionToken;
@@ -1031,6 +1270,10 @@ function requestHint() {
 
 async function requestProbe() {
   if (!state.scenario || state.probeBusy || currentPhase() === 'debrief') return;
+  if (state.offline) {
+    showToast(OFFLINE_MESSAGE);
+    return;
+  }
   const token = state.sessionToken;
   state.probeBusy = true;
   renderPhaseUI();
@@ -1069,6 +1312,9 @@ function loadChangeStarter() {
     state.savedImplementCode = $('editor').value;
   }
   $('editor').value = state.scenario.changeRequest.starterCode;
+  state.editorDraftPhase = 'change';
+  saveDraftNow('editor', $('editor').value);
+  if (assist) assist.close();
   state.changeLoaded = true;
   $('restoreCodeBtn').classList.remove('hidden');
   addMessage('system', 'Loaded the change-request starter. Your implementation was saved.');
@@ -1077,6 +1323,9 @@ function loadChangeStarter() {
 function restoreCode() {
   if (!state.savedImplementCode) return;
   $('editor').value = state.savedImplementCode;
+  state.editorDraftPhase = 'implement';
+  saveDraftNow('editor', $('editor').value);
+  if (assist) assist.close();
   state.changeLoaded = false;
   $('restoreCodeBtn').classList.add('hidden');
   addMessage('system', 'Restored your implementation from before the change request.');
@@ -1088,12 +1337,21 @@ function resetCode() {
   const source = useChange ? state.scenario.changeRequest.starterCode : state.scenario.starterCode;
   if (!window.confirm('Replace the editor contents with the starter code?')) return;
   $('editor').value = source;
+  state.editorDraftPhase = useChange ? 'change' : 'implement';
+  saveDraftNow('editor', $('editor').value);
+  if (assist) assist.close();
   state.changeLoaded = Boolean(useChange);
-  addMessage('system', 'Editor reset to the starter code.');
+  addMessage('system', 'Editor reset to the starter code. The starter replaces the saved draft.');
 }
 
 async function runTests() {
   if (state.runBusy || !state.scenario || currentPhase() === 'debrief') return;
+  if (state.offline) {
+    $('consoleOutput').innerHTML = `<p class="compile-fail">${OFFLINE_MESSAGE}</p>`;
+    $('consoleStatus').textContent = 'Needs local server';
+    showToast(OFFLINE_MESSAGE);
+    return;
+  }
   const token = state.sessionToken;
   const epoch = state.runEpoch;
   const set = currentPhase() === 'change' ? 'change' : 'base';
@@ -1399,6 +1657,17 @@ async function saveProgress(token) {
 
 async function openDebrief() {
   if (!state.active || state.debriefRunning) return;
+  if (state.offline) {
+    state.running = false;
+    state.phaseIndex = phaseList().length - 1;
+    renderPhaseUI();
+    renderTimer();
+    $('debriefTitle').textContent = `${state.scenario.title} · debrief`;
+    $('debriefBody').innerHTML = `<p class="compile-fail">${OFFLINE_MESSAGE}</p>
+      <p class="muted">Your code and diagnosis note are saved automatically. Start the local server and reload; your draft is restored so you can run the hidden tests and score this session.</p>`;
+    $('debriefDialog').showModal();
+    return;
+  }
   if (state.debriefRendered) {
     $('debriefDialog').showModal();
     await saveProgress(state.sessionToken);
@@ -1675,13 +1944,13 @@ function retryScenario() {
   if (!state.scenario) return;
   const scenario = state.scenario;
   const minutes = { ...state.minutes };
-  startSession(scenario, minutes);
+  startSession(scenario, minutes, { resetDrafts: true });
 }
 
 function startRecommended() {
   const next = recommendNext();
   if (!next) return;
-  startSession(next, next.phaseTimes);
+  startSession(next, next.phaseTimes, { resetDrafts: true });
 }
 
 function endScenarioSession() {
@@ -1693,6 +1962,8 @@ function endScenarioSession() {
   stopDictation(true, true);
   cancelSpeech();
   setDictationStatus('');
+  if (assist) assist.close();
+  hideRefreshers();
   $('sessionScreen').classList.add('hidden');
   $('setupScreen').classList.remove('hidden');
   $('exitBtn').classList.add('hidden');
@@ -1701,7 +1972,7 @@ function endScenarioSession() {
 
 function exitSession() {
   if (!state.active) return;
-  if (!window.confirm('Leave this session? Only a completed debrief is saved to local progress.')) return;
+  if (!window.confirm('Leave this session? Your draft is saved automatically; only a completed debrief is saved to local progress.')) return;
   endScenarioSession();
 }
 
@@ -1813,6 +2084,10 @@ function toggleExamPause() {
 
 function tickExam() {
   if (!exam.active || !exam.running || exam.submitted) return;
+  if (refreshersVisible()) {
+    exam.lastTick = performance.now();
+    return;
+  }
   const now = performance.now();
   const delta = Math.max(0, (now - exam.lastTick) / 1000);
   exam.lastTick = now;
@@ -1828,6 +2103,10 @@ function tickExam() {
 
 async function startExam({ ids = null, minutes = 25 } = {}) {
   if (exam.submitting) return;
+  if (state.offline) {
+    showToast(OFFLINE_MESSAGE);
+    return;
+  }
   if (exam.active && !exam.submitted && !window.confirm('Replace the exam in progress? Your answers will not be saved.')) return;
   const query = ids && ids.length ? `?ids=${ids.map((id) => encodeURIComponent(id)).join(',')}` : '';
   let data;
@@ -1843,7 +2122,7 @@ async function startExam({ ids = null, minutes = 25 } = {}) {
   }
 
   if (state.active) {
-    if (!window.confirm('Leave this session? Only a completed debrief is saved to local progress.')) return;
+    if (!window.confirm('Leave this session? Your draft is saved automatically; only a completed debrief is saved to local progress.')) return;
     endScenarioSession();
   }
 
@@ -1880,6 +2159,7 @@ async function startExam({ ids = null, minutes = 25 } = {}) {
     ? 'Only the questions you missed last time. Answer each one, then submit.'
     : 'Answer every question, then submit. Answers stay hidden until the report.';
   $('examTimerNote').textContent = '';
+  hideRefreshers();
   $('setupScreen').classList.add('hidden');
   $('sessionScreen').classList.add('hidden');
   $('examScreen').classList.remove('hidden');
@@ -1949,6 +2229,7 @@ async function submitExam({ timedOut = false } = {}) {
     }
     if (token !== exam.token) return;
     renderExamReport(report, { timedOut: exam.timedOut });
+    hideRefreshers();
     $('examResultAnnouncement').textContent = '';
     $('examReportDialog').showModal();
     $('examResultAnnouncement').textContent = exam.summaryText;
@@ -2066,6 +2347,7 @@ function renderExamReport(report, { timedOut = false } = {}) {
 
 function exitExam() {
   cancelSpeech();
+  hideRefreshers();
   if (!exam.active) {
     $('examReportDialog').close();
     return;
@@ -2079,6 +2361,7 @@ function exitExam() {
   exam.submitted = false;
   exam.submitting = false;
   $('examReportDialog').close();
+  if (assist) assist.close();
   $('examScreen').classList.add('hidden');
   $('setupScreen').classList.remove('hidden');
   $('exitBtn').classList.add('hidden');
@@ -2087,6 +2370,11 @@ function exitExam() {
 
 async function openHistory() {
   const body = $('historyBody');
+  if (state.offline) {
+    body.innerHTML = `<p class="compile-fail">${OFFLINE_MESSAGE}</p>`;
+    $('historyDialog').showModal();
+    return;
+  }
   body.innerHTML = '<p class="muted">Loading local progress...</p>';
   $('historyDialog').showModal();
   try {
@@ -2213,8 +2501,239 @@ function renderHistory(records) {
   }
 }
 
+let refreshersReady = false;
+let methodTotal = 0;
+let refreshersReturn = null;
+
+function refreshersVisible() {
+  return !$('refreshersScreen').classList.contains('hidden');
+}
+
+function hideRefreshers() {
+  $('refreshersScreen').classList.add('hidden');
+  refreshersReturn = null;
+}
+
+function openRefreshers() {
+  cancelSpeech();
+  if (assist) assist.close();
+  if (!refreshersVisible()) {
+    refreshersReturn = {
+      screen: exam.active ? 'exam' : state.active ? 'session' : 'setup',
+      sessionRunning: state.running,
+      examRunning: exam.running,
+    };
+    if (state.active && state.running) {
+      state.running = false;
+      state.lastTick = performance.now();
+      renderPhaseUI();
+      renderTimer();
+    }
+    if (exam.active && exam.running) {
+      exam.running = false;
+      exam.lastTick = performance.now();
+      renderExamNav();
+    }
+  }
+  $('setupScreen').classList.add('hidden');
+  $('sessionScreen').classList.add('hidden');
+  $('examScreen').classList.add('hidden');
+  $('refreshersScreen').classList.remove('hidden');
+  $('exitBtn').classList.add('hidden');
+  renderRefreshers();
+}
+
+function closeRefreshers() {
+  const snapshot = refreshersReturn;
+  refreshersReturn = null;
+  const target = snapshot?.screen || (exam.active ? 'exam' : state.active ? 'session' : 'setup');
+  $('refreshersScreen').classList.add('hidden');
+  $('setupScreen').classList.toggle('hidden', target !== 'setup');
+  $('sessionScreen').classList.toggle('hidden', target !== 'session');
+  $('examScreen').classList.toggle('hidden', target !== 'exam');
+  $('exitBtn').classList.toggle('hidden', !state.active || exam.active);
+  if (state.active && snapshot?.sessionRunning && !document.hidden && currentPhase() !== 'debrief') {
+    state.running = true;
+    state.lastTick = performance.now();
+    renderPhaseUI();
+    renderTimer();
+  }
+  if (exam.active && !exam.submitted && snapshot?.examRunning && !document.hidden) {
+    exam.running = true;
+    exam.manualPause = false;
+    exam.pausedByVisibility = false;
+    exam.lastTick = performance.now();
+    $('examTimerNote').textContent = '';
+    renderExamNav();
+  }
+}
+
+function renderRefreshers() {
+  if (refreshersReady) return;
+  refreshersReady = true;
+
+  const lessons = $('lessonList');
+  lessons.innerHTML = '';
+  LESSONS.forEach((lesson, index) => {
+    const details = document.createElement('details');
+    details.className = 'lesson-card';
+    const summary = document.createElement('summary');
+    const number = document.createElement('span');
+    number.className = 'lesson-number';
+    number.textContent = String(index + 1);
+    const title = document.createElement('span');
+    title.className = 'lesson-title';
+    title.textContent = lesson.title;
+    summary.append(number, title);
+
+    const body = document.createElement('div');
+    body.className = 'lesson-body';
+    const explanation = document.createElement('p');
+    explanation.textContent = lesson.summary;
+    body.appendChild(explanation);
+
+    const code = document.createElement('pre');
+    code.className = 'lesson-code';
+    code.textContent = lesson.example.code;
+    const output = document.createElement('p');
+    output.className = 'lesson-output';
+    output.textContent = `Output: ${lesson.example.output}`;
+    body.append(code, output);
+
+    const points = document.createElement('ul');
+    points.className = 'lesson-points';
+    for (const point of lesson.keyPoints) {
+      const item = document.createElement('li');
+      item.textContent = point;
+      points.appendChild(item);
+    }
+    body.appendChild(points);
+
+    if (lesson.methodLinks.length) {
+      const links = document.createElement('div');
+      links.className = 'lesson-links';
+      const label = document.createElement('span');
+      label.className = 'muted';
+      label.textContent = 'Method cards:';
+      links.appendChild(label);
+      for (const groupId of lesson.methodLinks) {
+        const group = METHOD_GROUPS.find((item) => item.id === groupId);
+        if (!group) continue;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'link-chip';
+        button.textContent = group.title;
+        button.addEventListener('click', () => focusMethodGroup(groupId));
+        links.appendChild(button);
+      }
+      body.appendChild(links);
+    }
+
+    details.append(summary, body);
+    lessons.appendChild(details);
+  });
+
+  const groups = $('methodGroups');
+  groups.innerHTML = '';
+  methodTotal = 0;
+  for (const group of METHOD_GROUPS) {
+    const section = document.createElement('section');
+    section.className = 'method-group';
+    section.id = `method-group-${group.id}`;
+    section.tabIndex = -1;
+    const heading = document.createElement('div');
+    heading.className = 'method-group-head';
+    const title = document.createElement('h4');
+    title.textContent = group.title;
+    const count = document.createElement('span');
+    count.className = 'muted';
+    count.textContent = `${group.methods.length} methods`;
+    heading.append(title, count);
+    const subtitle = document.createElement('p');
+    subtitle.className = 'muted';
+    subtitle.textContent = group.subtitle;
+    section.append(heading, subtitle);
+
+    for (const method of group.methods) {
+      methodTotal += 1;
+      const card = document.createElement('article');
+      card.className = 'method-card';
+      card.dataset.search = [
+        method.name,
+        method.signature,
+        method.returns,
+        method.description,
+        method.example,
+        group.title,
+      ].join(' ').toLowerCase();
+
+      const head = document.createElement('div');
+      head.className = 'method-card-head';
+      const signature = document.createElement('code');
+      signature.textContent = method.signature;
+      const returns = document.createElement('span');
+      returns.className = 'method-returns';
+      returns.textContent = `returns ${method.returns}`;
+      head.append(signature, returns);
+
+      const description = document.createElement('p');
+      description.textContent = method.description;
+      const example = document.createElement('code');
+      example.className = 'method-example';
+      example.textContent = method.example;
+
+      card.append(head, description, example);
+      section.appendChild(card);
+    }
+    groups.appendChild(section);
+  }
+
+  filterMethodGroups('');
+}
+
+function filterMethodGroups(query) {
+  const needle = query.trim().toLowerCase();
+  const groups = $('methodGroups');
+  if (!groups) return;
+  let visible = 0;
+  for (const section of groups.querySelectorAll('.method-group')) {
+    let sectionVisible = false;
+    for (const card of section.querySelectorAll('.method-card')) {
+      const show = !needle || card.dataset.search.includes(needle);
+      card.classList.toggle('hidden', !show);
+      if (show) {
+        visible += 1;
+        sectionVisible = true;
+      }
+    }
+    section.classList.toggle('hidden', !sectionVisible);
+  }
+  const status = $('methodSearchStatus');
+  if (status) {
+    status.textContent = needle
+      ? `${visible} method${visible === 1 ? '' : 's'} matching "${query.trim()}"`
+      : `${methodTotal} methods across ${METHOD_GROUPS.length} groups`;
+  }
+}
+
+function focusMethodGroup(groupId) {
+  const target = document.getElementById(`method-group-${groupId}`);
+  if (!target) return;
+  $('methodSearch').value = '';
+  filterMethodGroups('');
+  target.classList.remove('hidden');
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  target.classList.add('flash');
+  target.focus({ preventScroll: true });
+  setTimeout(() => target.classList.remove('flash'), 1200);
+}
+
 function bindEvents() {
   $('historyBtn').addEventListener('click', openHistory);
+  $('refreshersBtn').addEventListener('click', openRefreshers);
+  $('openRefreshersBtn').addEventListener('click', openRefreshers);
+  $('refreshersBackBtn').addEventListener('click', closeRefreshers);
+  $('methodSearch').addEventListener('input', (event) => filterMethodGroups(event.target.value));
   $('exitBtn').addEventListener('click', exitSession);
   $('closeHistoryBtn').addEventListener('click', () => $('historyDialog').close());
   $('closeDebriefBtn').addEventListener('click', () => $('debriefDialog').close());
@@ -2265,15 +2784,36 @@ function bindEvents() {
   $('resetCodeBtn').addEventListener('click', resetCode);
   $('diagnosisInput').addEventListener('input', (event) => {
     state.diagnosisText = event.target.value;
+    if (state.active) scheduleDraftSave('diagnosis', event.target.value);
+  });
+
+  $('editor').addEventListener('input', () => {
+    if (state.active) scheduleDraftSave('editor', $('editor').value);
+  });
+
+  window.addEventListener('pagehide', flushDraftSaves);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) flushDraftSaves();
+  });
+
+  $('assistToggle').addEventListener('click', () => {
+    if (!assist) return;
+    const next = !assist.isEnabled();
+    assist.setEnabled(next);
+    storeAssistEnabled(state.scenario?.roundType || 'coding', next);
+    updateAssistButton();
   });
 
   $('editor').addEventListener('keydown', (event) => {
+    if (event.isComposing) return;
+    if (assist && assist.handleKeyDown(event)) return;
     if (event.key === 'Tab') {
       event.preventDefault();
       const editor = $('editor');
       const start = editor.selectionStart;
       const end = editor.selectionEnd;
       editor.setRangeText('    ', start, end, 'end');
+      if (state.active) scheduleDraftSave('editor', editor.value);
       return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -2321,6 +2861,13 @@ function registerServiceWorker() {
 async function init() {
   registerServiceWorker();
   bindEvents();
+  assist = createEditorAssist({
+    editor: $('editor'),
+    popup: $('editorPopup'),
+    onStateChange: updateAssistButton,
+  });
+  applyAssistForRound('coding');
+  applyOfflineUI();
   voice.autoSpeak = readStoredAutoSpeak();
   updateVoiceUI();
   updateMicUI();
@@ -2335,12 +2882,14 @@ async function init() {
     const health = await api('/api/health');
     state.jdk = health.jdk;
     state.ai = health.ai;
+    state.offline = false;
 
     const list = await api('/api/scenarios');
     const details = await Promise.all(
       list.scenarios.map((summary) => api(`/api/scenarios/${encodeURIComponent(summary.id)}`).then((data) => data.scenario)),
     );
     state.scenarios = details;
+    writeScenarioCache(details);
 
     try {
       const progress = await api('/api/progress');
@@ -2351,7 +2900,20 @@ async function init() {
 
     renderStatus();
     renderScenarios();
+    applyOfflineUI();
   } catch (error) {
+    const cached = readScenarioCache();
+    if (cached) {
+      state.offline = true;
+      state.jdk = { available: false, installSteps: [] };
+      state.ai = { configured: false, model: null };
+      state.scenarios = cached;
+      state.progress = [];
+      renderStatus();
+      renderScenarios();
+      applyOfflineUI();
+      return;
+    }
     showToast(`Could not load the simulator: ${error.message}`);
     $('scenarioGrid').innerHTML = `<div class="empty-state">The server did not answer. Start it with <code>node interview-sim/server.mjs</code> and reload.</div>`;
   }
